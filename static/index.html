@@ -23,8 +23,20 @@
 
     <!-- Sidebar -->
     <div class="w-64 bg-gray-900 border-r border-gray-700 flex flex-col">
-        <div class="p-4 border-b border-gray-700">
+        <div class="p-4 border-b border-gray-700 flex justify-between items-center">
             <h1 class="text-xl font-bold text-blue-400">Aigent</h1>
+            <!-- User Settings Trigger -->
+            <div x-data="{ open: false }" class="relative">
+                <button @click="open = !open" class="text-gray-400 hover:text-white transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                </button>
+                <!-- User Settings Dropdown -->
+                <div x-show="open" @click.outside="open = false" class="absolute left-0 top-full mt-2 w-48 bg-gray-800 border border-gray-600 rounded shadow-xl p-3 z-50">
+                    <label class="block text-xs text-gray-500 uppercase font-bold mb-1">Display Name</label>
+                    <input x-model="userId" @change="persistUser()" class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:border-blue-500 outline-none">
+                    <p class="text-[10px] text-gray-500 mt-2">Changes apply on reconnect.</p>
+                </div>
+            </div>
         </div>
         
         <div class="flex-1 overflow-y-auto p-2 space-y-2">
@@ -235,7 +247,7 @@
                 sessionId: '',
                 savedSessions: [],
                 joinInput: '',
-                userId: 'User-' + Math.floor(Math.random() * 1000), // Simple random ID
+                userId: 'User', // Will load from storage
                 md: window.markdownit({ html: false, linkify: true }),
                 profiles: ['default'], // Fallback
                 config: { tool_call_preview_length: 100 }, // Default
@@ -243,6 +255,15 @@
                 init() {
                     this.fetchProfiles();
                     this.fetchConfig();
+                    
+                    // Load User ID
+                    const storedUser = localStorage.getItem('aigent_username');
+                    if (storedUser) {
+                        this.userId = storedUser;
+                    } else {
+                        this.userId = 'User-' + Math.floor(Math.random() * 1000);
+                        this.persistUser();
+                    }
                     
                     // Load saved sessions
                     const saved = localStorage.getItem('aigent_sessions_v2');
@@ -346,6 +367,10 @@
 
                 persistSessions() {
                     localStorage.setItem('aigent_sessions_v2', JSON.stringify(this.savedSessions));
+                },
+
+                persistUser() {
+                    localStorage.setItem('aigent_username', this.userId);
                 },
 
                 deleteSession(sid) {

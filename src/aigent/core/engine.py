@@ -198,7 +198,7 @@ class AgentEngine:
         system_msg_content = self.history[0].content if self.history else ""
         chat_history_safe = self.history[1:-1] # Exclude system and latest human (passed as input)
 
-    async def _run_agent_executor(self, user_input: str):
+    async def _run_agent_executor(self, user_input: str, user_name: Optional[str] = None):
         """Helper to run the agent and push events to the queue."""
         from langchain.agents import create_tool_calling_agent, AgentExecutor
         from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -208,6 +208,8 @@ class AgentEngine:
             prompt = ChatPromptTemplate.from_messages([
                 ("system", "{system_message}"),
                 MessagesPlaceholder(variable_name="chat_history"),
+                # We don't standardly inject user name into prompt unless we change the prompt structure.
+                # But LangChain HumanMessage name is enough for history tracking.
                 ("human", "{input}"),
                 MessagesPlaceholder(variable_name="agent_scratchpad"),
             ])
@@ -291,7 +293,7 @@ class AgentEngine:
             await self._emit_event(AgentEvent(type=EventType.ERROR, content=str(e)))
 
 
-    async def stream(self, user_input: str) -> AsyncGenerator[AgentEvent, None]:
+    async def stream(self, user_input: str, user_name: Optional[str] = None) -> AsyncGenerator[AgentEvent, None]:
         """
         The main loop. Streams events from the queue as they happen.
         """
@@ -299,10 +301,11 @@ class AgentEngine:
             await self.initialize()
 
         # Add user message to history
-        self.history.append(HumanMessage(content=user_input))
+        # Attach the name if provided
+        self.history.append(HumanMessage(content=user_input, name=user_name))
 
         # Start execution in background
-        task = asyncio.create_task(self._run_agent_executor(user_input))
+        task = asyncio.create_task(self._run_agent_executor(user_input, user_name))
         
         # Consume queue
         while not task.done() or not self._event_queue.empty():

@@ -94,7 +94,11 @@ class ConnectionManager:
         for msg in engine.history:
             if isinstance(msg, HumanMessage):
                 # Replay User Input
-                event = AgentEvent(type=EventType.USER_INPUT, content=str(msg.content))
+                meta = {}
+                if msg.name:
+                    meta["user_id"] = msg.name
+                    
+                event = AgentEvent(type=EventType.USER_INPUT, content=str(msg.content), metadata=meta)
                 await websocket.send_text(event.to_json())
             
             elif isinstance(msg, AIMessage):
@@ -255,12 +259,12 @@ async def websocket_endpoint(
             # manager.locks ensures that.
             # We launch a task that acquires the lock.
             
-            asyncio.create_task(process_chat_message(session_id, user_input))
+            asyncio.create_task(process_chat_message(session_id, user_input, user_name=user_id))
                 
     except WebSocketDisconnect:
         manager.disconnect(websocket, session_id)
 
-async def process_chat_message(session_id: str, user_input: str):
+async def process_chat_message(session_id: str, user_input: str, user_name: str = None):
     """Background task to run the engine"""
     engine = manager.sessions.get(session_id)
     if not engine:
@@ -273,7 +277,7 @@ async def process_chat_message(session_id: str, user_input: str):
     # Acquire lock to ensure we don't run multiple turns at once
     async with lock:
         try:
-            async for event in engine.stream(user_input):
+            async for event in engine.stream(user_input, user_name=user_name):
                 await manager.broadcast(session_id, event.to_json())
             
             await manager._save_session_to_disk(session_id)
