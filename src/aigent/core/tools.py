@@ -170,11 +170,10 @@ def fs_patch(
             lineterm=""
         )
         
-        # Filter out git-style headers (---, +++, @@)
-        # Content lines always start with ' ', '+', or '-'
+        # Filter out file headers (---, +++) but keep hunk headers (@@) and content
         diff_lines = [
             line for line in diff 
-            if not line.startswith(('---', '+++', '@@'))
+            if not line.startswith(('---', '+++'))
         ]
         
         if not diff_lines:
