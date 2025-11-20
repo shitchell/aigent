@@ -36,6 +36,39 @@ class ProfileManager:
                 if "name" not in profile_data:
                     profile_data["name"] = name
                 
+                # Resolve file paths relative to config file
+                base_dir = self.config_path.parent
+                
+                # Helper to resolve list of paths
+                def resolve_paths(paths):
+                    resolved = []
+                    for p in paths:
+                        if p.startswith("~"):
+                            resolved.append(os.path.expanduser(p))
+                        elif not os.path.isabs(p):
+                            resolved.append(str(base_dir / p))
+                        else:
+                            resolved.append(p)
+                    return resolved
+
+                if "system_prompt_files" in profile_data:
+                    profile_data["system_prompt_files"] = resolve_paths(profile_data["system_prompt_files"])
+                
+                if "context_files" in profile_data:
+                    profile_data["context_files"] = resolve_paths(profile_data["context_files"])
+
+                # Handle legacy system_prompt_path
+                if "system_prompt_path" in profile_data and profile_data["system_prompt_path"]:
+                    path = profile_data["system_prompt_path"]
+                    if path.startswith("~"):
+                        path = os.path.expanduser(path)
+                    elif not os.path.isabs(path):
+                        path = str(base_dir / path)
+                    # Map to system_prompt_files
+                    if "system_prompt_files" not in profile_data:
+                         profile_data["system_prompt_files"] = []
+                    profile_data["system_prompt_files"].append(path)
+
                 self._profiles[name] = UserProfile(**profile_data)
                 
             # Ensure default exists

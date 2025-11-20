@@ -28,12 +28,22 @@ class AgentEngine:
         Async initialization: loads tools, reads memory files, sets up LLM.
         """
         # 1. Load Static Context (System Prompt)
+        # Standard locations
         system_context = await self.memory_loader.load_context()
         
-        # Override with profile path if specified
-        if self.profile.system_prompt_path:
-             # Logic to load specific file could go here
-             pass
+        # Profile-specific files (Absolute paths resolved by ProfileManager)
+        if self.profile.system_prompt_files:
+            # We pass Path(".") as base because paths are already absolute
+            extra_context = await self.memory_loader.load_from_paths(self.profile.system_prompt_files, Path("."))
+            system_context += "\n" + extra_context
+
+        if self.profile.context_files:
+            extra_context = await self.memory_loader.load_from_paths(self.profile.context_files, Path("."))
+            system_context += "\n" + extra_context
+
+        # Profile-specific inline prompt
+        if self.profile.system_prompt:
+            system_context += f"\n--- Profile Instructions ---\n{self.profile.system_prompt}\n"
 
         # 2. Load Tools (Plugins + Core)
         plugin_tools = self.plugin_loader.load_plugins(self.profile.allowed_tools)

@@ -37,7 +37,11 @@ class UserProfile(BaseModel):
     Loaded from ~/.config/aigent/profiles.yaml
     """
     name: str
-    system_prompt_path: Optional[str] = None
+    system_prompt: Optional[str] = None
+    system_prompt_path: Optional[str] = None # Deprecated, maps to system_prompt_files
+    system_prompt_files: List[str] = Field(default_factory=list)
+    context_files: List[str] = Field(default_factory=list)
+    
     model_provider: ModelProvider = ModelProvider.OPENAI
     model_name: str = "gpt-4o"
     temperature: float = 0.7

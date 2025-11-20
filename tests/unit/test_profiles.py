@@ -28,3 +28,32 @@ profiles:
     assert profile.name == "coder"
     assert profile.model_provider == "anthropic"
     assert profile.temperature == 0.1
+
+def test_profile_path_resolution(tmp_path):
+    config_path = tmp_path / "config" / "profiles.yaml"
+    config_path.parent.mkdir()
+    
+    # Create a dummy prompt file relative to config
+    prompt_file = config_path.parent / "prompt.md"
+    prompt_file.write_text("Be helpful.")
+    
+    yaml_content = f"""
+profiles:
+  test:
+    system_prompt_files:
+      - "./prompt.md"
+    context_files:
+      - "~/foo.md"
+    system_prompt: "Inline instruction."
+"""
+    config_path.write_text(yaml_content)
+    
+    pm = ProfileManager(config_path=config_path)
+    profile = pm.get_profile("test")
+    
+    # Check absolute resolution
+    assert str(prompt_file) in profile.system_prompt_files[0]
+    assert profile.system_prompt == "Inline instruction."
+    # Check home expansion (simple check if it no longer starts with ~)
+    assert not profile.context_files[0].startswith("~")
+    assert "foo.md" in profile.context_files[0]

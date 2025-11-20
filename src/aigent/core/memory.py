@@ -40,3 +40,33 @@ class MemoryLoader:
                     contents.append(f"!--- Error reading {path}: {e} ---!\n")
 
         return "\n".join(contents)
+
+    async def read_file_content(self, path: str, base_path: Path) -> str:
+        """
+        Reads a single file, resolving path relative to base_path or home dir.
+        """
+        try:
+            p = Path(path)
+            if path.startswith("~"):
+                p = p.expanduser()
+            elif not p.is_absolute():
+                p = base_path / p
+            
+            if not p.exists():
+                return f"!--- Warning: File not found: {p} ---!\n"
+
+            async with aiofiles.open(p, mode='r') as f:
+                return await f.read()
+        except Exception as e:
+            return f"!--- Error reading {path}: {e} ---!\n"
+
+    async def load_from_paths(self, paths: List[str], base_path: Path) -> str:
+        """
+        Loads multiple files and concatenates content.
+        """
+        contents = []
+        for path in paths:
+            content = await self.read_file_content(path, base_path)
+            if content.strip():
+                contents.append(f"--- Context from {path} ---\n{content}\n")
+        return "\n".join(contents)
