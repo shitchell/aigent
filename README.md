@@ -46,6 +46,8 @@ Configure your agents in `~/.config/aigent/settings.yaml`.
 settings:
   default_profile: "default"
   tool_call_preview_length: 120
+  server_host: "127.0.0.1"
+  server_port: 8000
   # Security: Restrict file operations to these directories
   allowed_work_dirs: [".", "~/projects"]
 
@@ -88,7 +90,9 @@ aigent chat --yolo
 
 ### Web Daemon
 ```bash
-aigent serve --port 8000
+aigent serve
+# or override defaults
+aigent serve --port 9000
 ```
 **Features:**
 *   **Collaboration:** Share the URL (`?session=chat-abc`) to debug together.

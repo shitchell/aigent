@@ -2,6 +2,11 @@ settings:
   default_profile: "default"
   plugin_dir: "~/.aigent/tools/"
   tool_call_preview_length: 200
+  
+  # Server Defaults
+  server_host: "127.0.0.1"
+  server_port: 8000
+  
   # Security: Restrict file operations to specific directories
   allowed_work_dirs:
     - "."  # Current directory (default)

@@ -70,6 +70,10 @@ class AgentConfig(BaseModel):
     plugin_dir: str = "~/.aigent/tools"
     tool_call_preview_length: int = 100
     
+    # Server Configuration
+    server_host: str = "127.0.0.1"
+    server_port: int = 8000
+    
     # Security: Path Restrictions
     # List of allowed root directories for file operations.
     # Default is ["."] which resolves to CWD.
