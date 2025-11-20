@@ -6,6 +6,8 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.runnables import RunnableConfig
+from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from aigent.core.schemas import UserProfile, AgentEvent, EventType, ModelProvider
 from aigent.core.memory import MemoryLoader
@@ -108,9 +110,6 @@ class AgentEngine:
         # However, handling the "Loop" (Model -> Tool -> Model) manually is complex.
         # Let's use LangChain's AgentExecutor for now as it provides the robust loop 
         # and astream_events support.
-        
-        from langchain.agents import create_tool_calling_agent, AgentExecutor
-        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
         # Construct a temporary agent for this execution
         prompt = ChatPromptTemplate.from_messages([
