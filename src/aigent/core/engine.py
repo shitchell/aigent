@@ -143,7 +143,7 @@ class AgentEngine:
         # This is a bit hacky but standard for dynamic interception
         original_arun = tool._arun
         
-        async def wrapped_arun(*args, **kwargs):
+        async def wrapped_arun(*args, config: Optional[RunnableConfig] = None, **kwargs):
             # Construct args dict for check
             input_args = {}
             if args:
@@ -158,7 +158,8 @@ class AgentEngine:
             if not allowed:
                 return "Error: Tool execution denied by user."
             
-            return await original_arun(*args, **kwargs)
+            # Pass config explicitly if provided
+            return await original_arun(*args, config=config, **kwargs)
         
         tool._arun = wrapped_arun
         return tool
