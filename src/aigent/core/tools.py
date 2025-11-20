@@ -3,6 +3,42 @@ import subprocess
 import os
 from pathlib import Path
 import difflib
+from typing import Optional
+from aigent.core.profiles import ProfileManager
+
+def validate_path(p: Path) -> Optional[str]:
+    """
+    Validates that the path is within allowed working directories.
+    Returns Error string if invalid, None if valid.
+    """
+    try:
+        # Resolve absolute path of target
+        abs_path = p.resolve()
+        
+        # Get allowed dirs from config
+        # Note: ProfileManager is a singleton-ish (loads from same config file)
+        pm = ProfileManager()
+        # Ensure loaded (might duplicate load if not careful, but ProfileManager handles it gracefully usually)
+        # Actually ProfileManager logic: if not loaded, returns empty config?
+        # We assume it's initialized by the time tools run.
+        # If config not loaded, fallback to CWD (safe default).
+        
+        allowed_dirs = pm.config.allowed_work_dirs or ["."]
+        
+        # Check if path matches ANY allowed root
+        is_allowed = False
+        for allowed in allowed_dirs:
+            root = Path(allowed).expanduser().resolve()
+            if abs_path.is_relative_to(root):
+                is_allowed = True
+                break
+        
+        if not is_allowed:
+            return f"Error: Access Denied. Path '{p}' is outside the allowed working directories: {allowed_dirs}"
+            
+        return None
+    except Exception as e:
+        return f"Error validating path: {e}"
 
 @tool
 def fs_read(path: str) -> str:
@@ -20,6 +56,12 @@ def fs_read(path: str) -> str:
     """
     try:
         p = Path(path).expanduser()
+        
+        # Security Check
+        error = validate_path(p)
+        if error:
+            return error
+
         if not p.exists():
             return f"Error: File {path} does not exist."
         return p.read_text()
@@ -44,6 +86,12 @@ def fs_write(path: str, content: str, append: bool = False) -> str:
     """
     try:
         p = Path(path).expanduser()
+        
+        # Security Check
+        error = validate_path(p)
+        if error:
+            return error
+
         mode = "a" if append else "w"
         with open(p, mode) as f:
             f.write(content)
@@ -77,6 +125,12 @@ def fs_patch(
     """
     try:
         p = Path(path).expanduser()
+        
+        # Security Check
+        error = validate_path(p)
+        if error:
+            return error
+
         if not p.exists():
             return f"Error: File {path} not found."
             

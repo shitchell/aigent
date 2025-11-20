@@ -70,6 +70,11 @@ class AgentConfig(BaseModel):
     plugin_dir: str = "~/.aigent/tools"
     tool_call_preview_length: int = 100
     
+    # Security: Path Restrictions
+    # List of allowed root directories for file operations.
+    # Default is ["."] which resolves to CWD.
+    allowed_work_dirs: List[str] = Field(default_factory=lambda: ["."])
+    
     # Permission Schemas definitions
     permission_schemas: List[PermissionSchema] = Field(default_factory=lambda: [
         PermissionSchema(name="default", default_policy=PermissionPolicy.ASK, tools={"fs_read": PermissionPolicy.ALLOW})
