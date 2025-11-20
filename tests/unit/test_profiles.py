@@ -5,7 +5,7 @@ from aigent.core.schemas import UserProfile
 
 def test_default_profile_creation(tmp_path):
     # Point to a non-existent config file
-    config_path = tmp_path / "profiles.yaml"
+    config_path = tmp_path / "settings.yaml"
     pm = ProfileManager(config_path=config_path)
     
     profile = pm.get_profile("default")
@@ -13,7 +13,7 @@ def test_default_profile_creation(tmp_path):
     assert profile.model_provider == "openai"
 
 def test_load_custom_profile(tmp_path):
-    config_path = tmp_path / "profiles.yaml"
+    config_path = tmp_path / "settings.yaml"
     yaml_content = """
 profiles:
   coder:
@@ -30,7 +30,7 @@ profiles:
     assert profile.temperature == 0.1
 
 def test_profile_path_resolution(tmp_path):
-    config_path = tmp_path / "config" / "profiles.yaml"
+    config_path = tmp_path / "config" / "settings.yaml"
     config_path.parent.mkdir()
     
     # Create a dummy prompt file relative to config

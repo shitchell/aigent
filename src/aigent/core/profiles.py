@@ -4,7 +4,7 @@ from typing import Dict, Optional
 from pathlib import Path
 from aigent.core.schemas import UserProfile, AgentConfig
 
-DEFAULT_CONFIG_PATH = Path.home() / ".config" / "aigent" / "profiles.yaml"
+DEFAULT_CONFIG_PATH = Path.home() / ".config" / "aigent" / "settings.yaml"
 
 class ProfileManager:
     def __init__(self, config_path: Path = DEFAULT_CONFIG_PATH):

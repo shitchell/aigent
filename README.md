@@ -40,9 +40,13 @@ XAI_API_KEY="xai-..."     # For Grok
 ```
 
 ### 2. Profiles
-Configure your agents in `~/.config/aigent/profiles.yaml`.
+Configure your agents in `~/.config/aigent/settings.yaml`.
 
 ```yaml
+settings:
+  default_profile: "default"
+  tool_call_preview_length: 120
+
 profiles:
   default:
     name: "default"

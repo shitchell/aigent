@@ -81,7 +81,7 @@ async def test_profile_context_injection(tmp_path):
     and respected by the LLM.
     """
     # 1. Setup Config & Prompt File
-    config_path = tmp_path / "profiles.yaml"
+    config_path = tmp_path / "settings.yaml"
     prompt_file = tmp_path / "secret.txt"
     
     secret_key = "739184"

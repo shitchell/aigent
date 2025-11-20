@@ -34,7 +34,7 @@ class ModelProvider(StrEnum):
 class UserProfile(BaseModel):
     """
     Defines the configuration for a specific agent 'persona'.
-    Loaded from ~/.config/aigent/profiles.yaml
+    Loaded from ~/.config/aigent/settings.yaml
     """
     name: str
     system_prompt: Optional[str] = None

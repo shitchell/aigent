@@ -1,3 +1,8 @@
+settings:
+  default_profile: "default"
+  plugin_dir: "~/.aigent/tools/"
+  tool_call_preview_length: 200
+
 profiles:
   default:
     name: "default"

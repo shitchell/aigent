@@ -76,12 +76,12 @@ async def run_cli(args):
                         print(HTML(f"<yellow>🛠  {tool_name}({formatted_args})</yellow>"))
                         
                     elif event.type == EventType.TOOL_END:
-                        # We don't truncate Output here (or do we want to?)
-                        # Current code truncates to 100 chars.
-                        # Maybe we should respect the config setting too?
-                        # But output is usually huge. Let's stick to 100 or make output_preview_length?
-                        # For now, let's assume tool_call_preview_length applies to input args only as requested.
-                        print(HTML(f"<grey>   -> {event.content[:100]}...</grey>"))
+                        # Format output
+                        content = event.content
+                        # Truncate total length if massive
+                        if len(content) > 500:
+                            content = content[:500] + "..."
+                        print(HTML(f"<grey>{content}</grey>"))
                         
                     elif event.type == EventType.ERROR:
                         print(HTML(f"<red>Error: {event.content}</red>"))
