@@ -21,8 +21,8 @@ A robust, async-first LangChain agent with CLI and Web interfaces.
 
 1.  Clone and install in editable mode (recommended for development):
     ```bash
-    git clone https://github.com/shitchell/langchain-simple.git
-    cd langchain-simple
+    git clone https://github.com/shitchell/aigent.git
+    cd aigent
     pip install -e ".[dev]"
     ```
 
