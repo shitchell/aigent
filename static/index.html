@@ -23,7 +23,7 @@
 
     <!-- Sidebar -->
     <div class="w-64 bg-gray-900 border-r border-gray-700 flex flex-col">
-        <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+        <div class="h-16 border-b border-gray-700 flex justify-between items-center px-4">
             <h1 class="text-xl font-bold text-blue-400">Aigent</h1>
             <!-- User Settings Trigger -->
             <div x-data="{ open: false }" class="relative">
@@ -72,7 +72,7 @@
             </template>
         </div>
 
-        <div class="p-4 border-t border-gray-700 space-y-2" x-data="{ showProfiles: false }">
+        <div class="p-6 border-t border-gray-700 space-y-2" x-data="{ showProfiles: false }">
             
             <!-- New Chat Button Group -->
             <div class="relative">
@@ -132,7 +132,7 @@
         <div x-show="sessionId" class="flex-1 flex flex-col h-full relative">
             
             <!-- Header -->
-            <div class="h-14 border-b border-gray-700 flex items-center justify-between px-6 bg-gray-900/50 backdrop-blur">
+            <div class="h-16 border-b border-gray-700 flex items-center justify-between px-6 bg-gray-900/50 backdrop-blur">
             <div class="flex items-center gap-4" x-data="{ editing: false }">
                 <div x-show="!editing" @click="editing = true" class="cursor-pointer hover:text-white transition flex items-center gap-2 group">
                     <h2 class="text-sm font-bold text-gray-200" x-text="getSessionName(sessionId)"></h2>
@@ -228,7 +228,7 @@
                     placeholder="Type a message..." 
                     :disabled="!connected">
                 <button type="submit" 
-                    class="bg-blue-600 px-6 py-3 rounded-xl hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 transition font-semibold shadow-lg" 
+                    class="bg-blue-600 px-6 py-4 rounded-xl hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 transition font-semibold shadow-lg" 
                     :disabled="!connected">
                     Send
                 </button>

@@ -8,14 +8,14 @@ class MemoryLoader:
     from the three standard locations.
     """
     
-    def __init__(self, agent_name: str = "MYAGENT"):
-        # 1. Local directory ./.aigent/MYAGENT.md
+    def __init__(self, agent_name: str = "AIGENT"):
+        # 1. Local directory ./.aigent/AIGENT.md
         self.local_path = Path.cwd() / ".aigent" / f"{agent_name}.md"
         
-        # 2. User home ~/.aigent/MYAGENT.md
+        # 2. User home ~/.aigent/AIGENT.md
         self.user_path = Path.home() / ".aigent" / f"{agent_name}.md"
         
-        # 3. System /etc/aigent/MYAGENT.md
+        # 3. System /etc/aigent/AIGENT.md
         self.system_path = Path("/etc/aigent") / f"{agent_name}.md"
 
     async def load_context(self) -> str:
