@@ -36,6 +36,12 @@ class AuthorizationStrategy:
             # We want to skip env vars (VAR=val) and sudo/timeout prefixes
             parts = shlex.split(command)
             
+            # Safety Check: If any shell operators are present, treat as complex/unsafe
+            # We can't easily distinguish "ls" from "ls && rm" if we just pick the first word.
+            operators = {"&&", "||", ";", "|", ">", ">>", "<", "&"}
+            if any(p in operators for p in parts):
+                return None
+            
             # List of prefixes to skip
             skip_prefixes = {"sudo", "timeout", "nohup", "nice", "time"}
             
