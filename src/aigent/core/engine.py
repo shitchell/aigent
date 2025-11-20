@@ -6,8 +6,21 @@ from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.runnables import RunnableConfig
-from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain.agents import AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+# Handle potential import location changes or missing function in older versions
+try:
+    from langchain.agents import create_tool_calling_agent
+except ImportError:
+    try:
+        # Try importing from specific module if main package doesn't expose it
+        from langchain.agents.tool_calling_agent.base import create_tool_calling_agent
+    except ImportError:
+         # If truly missing, we might be on a very old version (pre-0.1.15)
+         # But we specified >=0.3.0 in pyproject.toml now.
+         # Re-raise with clear message
+         raise ImportError("Could not import 'create_tool_calling_agent'. Please ensure langchain>=0.2.0 is installed.")
 
 from aigent.core.schemas import UserProfile, AgentEvent, EventType, ModelProvider, PermissionSchema, PermissionPolicy
 from aigent.core.memory import MemoryLoader
@@ -172,7 +185,6 @@ class AgentEngine:
             user_input: The text input from the user.
             user_name: Optional name of the user for history tracking.
         """
-        from langchain.agents import create_tool_calling_agent, AgentExecutor
         from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
         try:
