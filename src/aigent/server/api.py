@@ -64,7 +64,70 @@ class ConnectionManager:
         await self.replay_history(session_id, websocket)
         return True
 
-    # ... (disconnect, broadcast, replay_history remain same)
+    def disconnect(self, websocket: WebSocket, session_id: str):
+        if session_id in self.active_connections:
+            if websocket in self.active_connections[session_id]:
+                self.active_connections[session_id].remove(websocket)
+            if not self.active_connections[session_id]:
+                # Optional: Clean up session engine if empty? 
+                # For now, keep it alive for persistence.
+                pass
+
+    async def broadcast(self, session_id: str, message: str):
+        """Sends a raw string (JSON) to all sockets in a session"""
+        if session_id not in self.active_connections:
+            return
+        
+        # Copy list to avoid modification during iteration issues
+        for connection in list(self.active_connections[session_id]):
+            try:
+                await connection.send_text(message)
+            except Exception:
+                # Handle dead sockets
+                pass
+
+    async def replay_history(self, session_id: str, websocket: WebSocket):
+        """Converts LangChain history to AgentEvents and sends them"""
+        engine = self.sessions[session_id]
+        
+        for msg in engine.history:
+            if isinstance(msg, HumanMessage):
+                # Replay User Input
+                event = AgentEvent(type=EventType.USER_INPUT, content=str(msg.content))
+                await websocket.send_text(event.to_json())
+            
+            elif isinstance(msg, AIMessage):
+                # 1. Replay Content (Thought/Answer)
+                if msg.content:
+                    event = AgentEvent(type=EventType.TOKEN, content=str(msg.content))
+                    await websocket.send_text(event.to_json())
+                
+                # 2. Replay Tool Calls
+                # tool_calls is a list of dicts: [{'name': 'foo', 'args': {...}, 'id': ...}]
+                if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    for tool_call in msg.tool_calls:
+                        event = AgentEvent(
+                            type=EventType.TOOL_START, 
+                            content=f"Calling tool: {tool_call['name']}",
+                            metadata={"input": tool_call['args'], "tool_call_id": tool_call['id']}
+                        )
+                        await websocket.send_text(event.to_json())
+                
+                if not msg.tool_calls:
+                    await websocket.send_text(AgentEvent(type=EventType.FINISH).to_json())
+
+            elif isinstance(msg, ToolMessage):
+                # Replay Tool Output
+                event = AgentEvent(
+                    type=EventType.TOOL_END, 
+                    content=str(msg.content),
+                    metadata={"tool_call_id": msg.tool_call_id}
+                )
+                await websocket.send_text(event.to_json())
+
+        # Final cleanup: Ensure the last message isn't stuck "Typing..."
+        if engine.history and isinstance(engine.history[-1], (AIMessage, ToolMessage)):
+             await websocket.send_text(AgentEvent(type=EventType.FINISH).to_json())
 
     async def _save_session_to_disk(self, session_id: str):
         """Saves the current engine history to disk."""

@@ -1,6 +1,6 @@
 import asyncio
 from typing import AsyncGenerator, List, Any
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage, ToolMessage
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
@@ -129,6 +129,8 @@ class AgentEngine:
         chat_history_safe = self.history[1:-1] # Exclude system and latest human (passed as input)
 
         # Stream events
+        final_output = {}
+        
         async for event in agent_executor.astream_events(
             {
                 "system_message": system_msg_content,
@@ -159,15 +161,38 @@ class AgentEngine:
                     metadata={"name": event["name"]}
                 )
             
-            # Handle "Thinking" / Intermediate steps if not covered by tool calls
-            # (AgentExecutor yields intermediate_steps in on_chain_end usually, 
-            # but real-time thinking is usually just the text before a tool call)
+            elif kind == "on_chain_end" and event["name"] == "AgentExecutor":
+                final_output = event["data"].get("output")
 
-        # Update history (AgentExecutor doesn't auto-update our list)
-        # In a real implementation, we'd parse the output and append AI Message + Tool Messages
-        # For now, we assume a single turn or need a better history manager.
-        # Simplification: We don't persist the full tool execution trace back to self.history 
-        # in this snippet to avoid complexity, but the Chat History provided to the agent 
-        # ensures context is kept for *this* session if we managed it correctly.
+        # Post-processing: Update History
+        if final_output:
+            # intermediate_steps is a list of (AgentAction, str) tuples
+            steps = final_output.get("intermediate_steps", [])
+            final_text = final_output.get("output", "")
+            
+            for action, observation in steps:
+                # Create unique ID for the tool call (required for ToolMessage matching)
+                call_id = action.tool_call_id if hasattr(action, 'tool_call_id') else f"call_{action.tool}"
+                
+                ai_msg = AIMessage(
+                    content=action.log or "", # The thought process
+                    tool_calls=[{
+                        "name": action.tool,
+                        "args": action.tool_input,
+                        "id": call_id
+                    }]
+                )
+                self.history.append(ai_msg)
+                
+                # The Tool Output
+                tool_msg = ToolMessage(
+                    content=str(observation),
+                    tool_call_id=call_id
+                )
+                self.history.append(tool_msg)
+            
+            # The Final Answer
+            if final_text:
+                self.history.append(AIMessage(content=final_text))
         
         yield AgentEvent(type=EventType.FINISH)

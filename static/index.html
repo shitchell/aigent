@@ -235,6 +235,7 @@
                     const sid = urlParams.get('session');
 
                     if (sid) {
+                        this.sessionId = sid; // FIX: Set session ID!
                         this.connectTo(sid);
                         // Ensure it's in our list
                         if (!this.savedSessions.find(s => s.id === sid)) {
@@ -357,8 +358,14 @@
                 },
 
                 handleEvent(event) {
-                    // 1. User Input Event (Broadcasted back to us)
+                    // 1. User Input Event
                     if (event.type === 'user_input') {
+                        // Ensure previous AI message is not loading
+                        if (this.messages.length > 0) {
+                            const last = this.messages[this.messages.length - 1];
+                            if (last.role === 'ai') last.loading = false;
+                        }
+
                         this.messages.push({
                             id: Date.now(),
                             role: 'user',
@@ -366,7 +373,7 @@
                             userId: event.metadata?.user_id || 'User',
                             tools: []
                         });
-                        // Prepare AI bubble immediately after user speaks
+                        // Prepare placeholder AI bubble
                         this.messages.push({
                             id: Date.now() + 1,
                             role: 'ai',
@@ -379,7 +386,8 @@
                     else {
                         // Find last AI message
                         let aiMsg = this.messages[this.messages.length - 1];
-                        // Safety: ensure it exists and is AI
+                        
+                        // If the last message is NOT AI (e.g. we joined mid-stream?), create one
                         if (!aiMsg || aiMsg.role !== 'ai') {
                              aiMsg = {
                                 id: Date.now(),
