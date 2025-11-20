@@ -1,13 +1,11 @@
+from dotenv import load_dotenv
 import argparse
 import asyncio
-import sys
-from typing import Optional, NoReturn
-from dotenv import load_dotenv
+from pathlib import Path
 
-# We will import the actual interfaces here later
 from aigent.interfaces.cli import run_cli
 from aigent.server.api import run_server
-from aigent.core.profiles import ProfileManager
+from aigent.core.profiles import ProfileManager, set_config_path
 
 def entry_point() -> None:
     """
@@ -17,12 +15,25 @@ def entry_point() -> None:
     # Load environment variables from .env file if present
     load_dotenv()
     
-    # Load Config to get defaults
+    # 1. Pre-parse --config argument
+    # We do this before loading ProfileManager so we can point it to the right file
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config", type=str, help="Path to configuration file")
+    known_args, _ = pre_parser.parse_known_args()
+    
+    if known_args.config:
+        set_config_path(Path(known_args.config).expanduser().resolve())
+    
+    # 2. Load Config to get defaults
     pm = ProfileManager()
     pm.load_profiles()
     config = pm.config
 
     parser = argparse.ArgumentParser(description="Aigent - AI Agent")
+    
+    # Add --config to main parser for help text consistency (handled above)
+    parser.add_argument("--config", type=str, help="Path to configuration file")
+    
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Chat Command (CLI)

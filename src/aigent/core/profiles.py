@@ -5,10 +5,21 @@ from pathlib import Path
 from aigent.core.schemas import UserProfile, AgentConfig
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "aigent" / "settings.yaml"
+_ACTIVE_CONFIG_PATH = DEFAULT_CONFIG_PATH
+
+def set_config_path(path: Path) -> None:
+    """Sets the global configuration path."""
+    global _ACTIVE_CONFIG_PATH
+    _ACTIVE_CONFIG_PATH = path
+
+def get_config_path() -> Path:
+    """Gets the current global configuration path."""
+    return _ACTIVE_CONFIG_PATH
 
 class ProfileManager:
-    def __init__(self, config_path: Path = DEFAULT_CONFIG_PATH):
-        self.config_path = config_path
+    def __init__(self, config_path: Optional[Path] = None):
+        # Use provided path, or fall back to the global active path
+        self.config_path = config_path or _ACTIVE_CONFIG_PATH
         self._profiles: Dict[str, UserProfile] = {}
         self.config = AgentConfig()
         self.loaded = False
