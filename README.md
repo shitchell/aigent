@@ -39,39 +39,38 @@ GOOGLE_API_KEY="AIza..."  # For Gemini
 XAI_API_KEY="xai-..."     # For Grok
 ```
 
-### 2. Profiles
+### 2. Profiles & Security
 Configure your agents in `~/.config/aigent/settings.yaml`.
 
 ```yaml
 settings:
   default_profile: "default"
   tool_call_preview_length: 120
+  # Security: Restrict file operations to these directories
+  allowed_work_dirs: [".", "~/projects"]
+
+# Define Authorization Policies
+permission_schemas:
+  - name: "default"
+    default_policy: "ask" # Ask user before running unknown tools
+    tools:
+      fs_read: "allow"    # Safe to read files
+      fs_write: "ask"     # Ask before writing
+      bash_execute: "ask" # ALWAYS ask before running shell commands
 
 profiles:
   default:
     name: "default"
-    model_provider: "openai"  # or "anthropic", "google", "grok"
+    model_provider: "openai"
     model_name: "gpt-4o-mini"
-    temperature: 0.7
-    allowed_tools: ["*"]      # Allow all tools
-
-  coder:
-    name: "coder"
-    model_provider: "anthropic"
-    model_name: "claude-3-5-sonnet-20241022"
-    temperature: 0.2
-    
-  cheap:
-    name: "cheap"
-    model_provider: "google"
-    model_name: "gemini-1.5-flash"
-    temperature: 0.5
+    permission_schema: "default" # Link to permission schema
 ```
 
 ### 3. Persistent Memory / Context
 Aigent reads markdown files on startup to build its system prompt.
-*   **Global:** `~/.aigent/MYAGENT.md` (Good for "Always remember I am a Python dev")
-*   **Project:** `./.aigent/MYAGENT.md` (Good for "This project uses FastAPI")
+*   **System:** `/etc/aigent/AIGENT.md` (Admins)
+*   **Global:** `~/.aigent/AIGENT.md` (Good for "Always remember I am a Python dev")
+*   **Project:** `./.aigent/AIGENT.md` (Good for "This project uses FastAPI")
 
 ## 🛠 Usage
 
@@ -81,13 +80,20 @@ aigent chat
 # or
 aigent chat --profile coder
 ```
+**YOLO Mode (Danger!):**
+Disable all permission prompts for this session:
+```bash
+aigent chat --yolo
+```
 
 ### Web Daemon
 ```bash
 aigent serve --port 8000
-# Then open http://localhost:8000
 ```
-**Collaboration:** Copy the URL from your browser (e.g., `http://localhost:8000/?session=chat-abc`) and send it to a friend. If they open it, they will join the same session and see the history.
+**Features:**
+*   **Collaboration:** Share the URL (`?session=chat-abc`) to debug together.
+*   **Human-in-the-Loop:** If the Agent tries to run `bash_execute`, a permission card appears. You can Allow, Deny, or "Always Allow" for the session.
+*   **Live Status:** See "Typing..." indicators and tool outputs in real-time.
 
 ## 🔌 Plugins (Tools)
 

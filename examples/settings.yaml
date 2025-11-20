@@ -2,6 +2,29 @@ settings:
   default_profile: "default"
   plugin_dir: "~/.aigent/tools/"
   tool_call_preview_length: 200
+  # Security: Restrict file operations to specific directories
+  allowed_work_dirs:
+    - "."  # Current directory (default)
+    - "~/code"
+    - "/tmp"
+
+# Define Permission Schemas
+# Tools not listed inherit 'default_policy'
+permission_schemas:
+  - name: "default"
+    default_policy: "ask"
+    tools:
+      fs_read: "allow"  # Safe to read
+      fs_write: "ask"   # Ask before write
+      bash_execute: "ask" # Always ask for shell
+      
+  - name: "paranoid"
+    default_policy: "deny"
+    tools:
+      fs_read: "ask"
+
+  - name: "yolo"
+    default_policy: "allow"
 
 profiles:
   default:
@@ -10,12 +33,14 @@ profiles:
     model_name: "gpt-4o-mini"
     temperature: 0.7
     allowed_tools: ["*"]
+    permission_schema: "default"
 
   cheap:
     name: "cheap"
     model_provider: "google"
     model_name: "gemini-1.5-flash"
     temperature: 0.5
+    permission_schema: "default"
 
   coder:
     name: "coder"
@@ -23,6 +48,7 @@ profiles:
     # The current SOTA for coding
     model_name: "claude-3-5-sonnet-20241022"
     temperature: 0.1
+    permission_schema: "default"
 
   gem3:
     name: "gem3"
