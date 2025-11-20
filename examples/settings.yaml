@@ -3,15 +3,16 @@ settings:
   plugin_dir: "~/.aigent/tools/"
   tool_call_preview_length: 200
   
-  # Server Defaults
-  server_host: "127.0.0.1"
-  server_port: 8000
-  
   # Security: Restrict file operations to specific directories
   allowed_work_dirs:
     - "."  # Current directory (default)
     - "~/code"
     - "/tmp"
+
+# Server Defaults
+server:
+  host: "127.0.0.1"
+  port: 8000
 
 # Define Permission Schemas
 # Tools not listed inherit 'default_policy'

@@ -32,8 +32,8 @@ def entry_point() -> None:
 
     # Serve Command (Web Daemon)
     serve_parser = subparsers.add_parser("serve", help="Start the API/Web daemon")
-    serve_parser.add_argument("--host", type=str, default=config.server_host)
-    serve_parser.add_argument("--port", type=int, default=config.server_port)
+    serve_parser.add_argument("--host", type=str, default=config.server.host)
+    serve_parser.add_argument("--port", type=int, default=config.server.port)
     serve_parser.add_argument("--yolo", action="store_true", help="Disable all permission checks server-wide (Danger!)")
 
     args = parser.parse_args()

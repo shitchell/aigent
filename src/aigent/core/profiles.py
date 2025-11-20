@@ -34,6 +34,10 @@ class ProfileManager:
             # Support loading permission_schemas from top-level
             if "permission_schemas" in data:
                 settings_data["permission_schemas"] = data["permission_schemas"]
+            
+            # Support loading server from top-level
+            if "server" in data:
+                settings_data["server"] = data["server"]
                 
             self.config = AgentConfig(**settings_data)
 

@@ -46,10 +46,12 @@ Configure your agents in `~/.config/aigent/settings.yaml`.
 settings:
   default_profile: "default"
   tool_call_preview_length: 120
-  server_host: "127.0.0.1"
-  server_port: 8000
   # Security: Restrict file operations to these directories
   allowed_work_dirs: [".", "~/projects"]
+
+server:
+  host: "127.0.0.1"
+  port: 8000
 
 # Define Authorization Policies
 permission_schemas:

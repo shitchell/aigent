@@ -62,6 +62,10 @@ class UserProfile(BaseModel):
     # Link to a permission schema
     permission_schema: str = "default"
     
+class ServerConfig(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 8000
+
 class AgentConfig(BaseModel):
     """
     Global application configuration.
@@ -71,8 +75,7 @@ class AgentConfig(BaseModel):
     tool_call_preview_length: int = 100
     
     # Server Configuration
-    server_host: str = "127.0.0.1"
-    server_port: int = 8000
+    server: ServerConfig = Field(default_factory=ServerConfig)
     
     # Security: Path Restrictions
     # List of allowed root directories for file operations.
