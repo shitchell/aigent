@@ -160,6 +160,29 @@
                             <span x-show="msg.loading" class="text-[10px] text-gray-500 animate-pulse">Typing...</span>
                         </div>
 
+                        <!-- Approval Request Card -->
+                        <div x-show="msg.approval" class="mb-4 bg-gray-800 border border-yellow-600 rounded-lg overflow-hidden shadow-lg animate-pulse-border">
+                            <div class="bg-yellow-900/30 px-4 py-2 border-b border-yellow-600/50 flex justify-between items-center">
+                                <span class="text-yellow-500 font-bold text-sm flex items-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                    Permission Required
+                                </span>
+                                <span class="text-xs text-yellow-400 font-mono" x-text="msg.approval.tool"></span>
+                            </div>
+                            <div class="p-4 space-y-3">
+                                <div class="bg-gray-900 p-3 rounded text-xs font-mono text-gray-300 overflow-x-auto whitespace-pre-wrap" x-text="formatToolInput(JSON.stringify(msg.approval.input))"></div>
+                                
+                                <div class="flex gap-2 pt-2" x-show="!msg.approval.responded">
+                                    <button @click="sendApproval(msg.approval.id, 'allow', msg)" class="flex-1 bg-green-700 hover:bg-green-600 text-white py-2 rounded text-xs font-bold transition">Allow Once</button>
+                                    <button @click="sendApproval(msg.approval.id, 'always_tool', msg)" class="flex-1 bg-blue-700 hover:bg-blue-600 text-white py-2 rounded text-xs font-bold transition">Always Allow Tool</button>
+                                    <button @click="sendApproval(msg.approval.id, 'deny', msg)" class="flex-1 bg-red-700 hover:bg-red-600 text-white py-2 rounded text-xs font-bold transition">Deny</button>
+                                </div>
+                                <div x-show="msg.approval.responded" class="text-center text-xs text-gray-500 italic">
+                                    Decision: <span x-text="msg.approval.decision"></span>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Tool Calls -->
                         <template x-for="tool in msg.tools">
                             <div class="mb-2 ml-2 bg-gray-900/50 border border-gray-700 rounded overflow-hidden text-xs font-mono group hover:border-gray-600 transition">
@@ -397,15 +420,21 @@
                     this.input = '';
                 },
 
+                sendApproval(requestId, decision, msgObj) {
+                    this.ws.send(JSON.stringify({
+                        type: 'approval_response',
+                        request_id: requestId,
+                        decision: decision
+                    }));
+                    msgObj.approval.responded = true;
+                    msgObj.approval.decision = decision;
+                    msgObj.loading = true; // Resume loading animation until tool finishes
+                },
+
                 handleEvent(event) {
                     // 1. User Input Event
                     if (event.type === 'user_input') {
-                        // Ensure previous AI message is not loading
-                        if (this.messages.length > 0) {
-                            const last = this.messages[this.messages.length - 1];
-                            if (last.role === 'ai') last.loading = false;
-                        }
-
+                        // ... (existing logic)
                         this.messages.push({
                             id: Date.now(),
                             role: 'user',
@@ -419,22 +448,22 @@
                             role: 'ai',
                             content: '',
                             tools: [],
-                            loading: true
+                            loading: true,
+                            approval: null // New field
                         });
                     } 
                     // 2. AI Events
                     else {
                         // Find last AI message
                         let aiMsg = this.messages[this.messages.length - 1];
-                        
-                        // If the last message is NOT AI (e.g. we joined mid-stream?), create one
                         if (!aiMsg || aiMsg.role !== 'ai') {
                              aiMsg = {
                                 id: Date.now(),
                                 role: 'ai',
                                 content: '',
                                 tools: [],
-                                loading: true
+                                loading: true,
+                                approval: null
                             };
                             this.messages.push(aiMsg);
                         }
@@ -452,6 +481,16 @@
                             if (tool) tool.result = event.content;
                         } else if (event.type === 'finish') {
                             aiMsg.loading = false;
+                        } else if (event.type === 'approval_request') {
+                            // Show Approval Card
+                            aiMsg.loading = false; // Pause loading indicator while waiting
+                            aiMsg.approval = {
+                                id: event.metadata.request_id,
+                                tool: event.metadata.tool,
+                                input: event.metadata.input,
+                                responded: false,
+                                decision: null
+                            };
                         }
                     }
 

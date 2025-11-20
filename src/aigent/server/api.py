@@ -225,30 +225,61 @@ async def websocket_endpoint(
         while True:
             data = await websocket.receive_text()
             
-            # 1. Broadcast the User's Input to everyone (so they see "User said X")
-            # We construct an event for this.
+            # Determine if it's a chat message or a control message (JSON)
+            try:
+                msg = json.loads(data)
+                if isinstance(msg, dict) and msg.get("type") == "approval_response":
+                    # Handle Approval
+                    engine = manager.sessions[session_id]
+                    if engine.authorizer:
+                        engine.authorizer.resolve_request(msg.get("request_id"), msg)
+                    continue
+            except json.JSONDecodeError:
+                pass # Treat as raw chat message
+
+            # Treat as chat input
+            user_input = data
+            
+            # 1. Broadcast User Input
             user_event = AgentEvent(
                 type=EventType.USER_INPUT, 
-                content=data,
+                content=user_input,
                 metadata={"user_id": user_id}
             )
             await manager.broadcast(session_id, user_event.to_json())
             
-            # 2. Run the Engine (Protected by Lock)
-            engine = manager.sessions[session_id]
-            lock = manager.locks[session_id]
+            # 2. Run Engine in Background Task
+            # We fire and forget (but we track it?)
+            # We need to ensure sequential execution for a single session?
+            # manager.locks ensures that.
+            # We launch a task that acquires the lock.
             
-            async with lock:
-                async for event in engine.stream(data):
-                    # Broadcast AI events (Tokens, Tools) to ALL users
-                    await manager.broadcast(session_id, event.to_json())
-                
-                # AUTO-SAVE after turn
-                await manager._save_session_to_disk(session_id)
+            asyncio.create_task(process_chat_message(session_id, user_input))
                 
     except WebSocketDisconnect:
         manager.disconnect(websocket, session_id)
-        # Optional: Broadcast "User left"
+
+async def process_chat_message(session_id: str, user_input: str):
+    """Background task to run the engine"""
+    engine = manager.sessions.get(session_id)
+    if not engine:
+        return
+
+    lock = manager.locks.get(session_id)
+    if not lock:
+        return
+        
+    # Acquire lock to ensure we don't run multiple turns at once
+    async with lock:
+        try:
+            async for event in engine.stream(user_input):
+                await manager.broadcast(session_id, event.to_json())
+            
+            await manager._save_session_to_disk(session_id)
+        except Exception as e:
+            print(f"Error in chat processing: {e}")
+            error_event = AgentEvent(type=EventType.ERROR, content=str(e))
+            await manager.broadcast(session_id, error_event.to_json())
 
 async def run_server(args):
     config = uvicorn.Config(app, host=args.host, port=args.port, log_level="info")

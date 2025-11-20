@@ -11,6 +11,19 @@ class EventType(StrEnum):
     ERROR = "error"
     THOUGHT = "thought"
     FINISH = "finish"
+    # New events for authorization
+    APPROVAL_REQUEST = "approval_request"
+    APPROVAL_RESPONSE = "approval_response"
+
+class PermissionPolicy(StrEnum):
+    ALLOW = "allow"
+    ASK = "ask"
+    DENY = "deny"
+
+class PermissionSchema(BaseModel):
+    name: str
+    default_policy: PermissionPolicy = PermissionPolicy.ASK
+    tools: Dict[str, PermissionPolicy] = Field(default_factory=dict)
 
 class AgentEvent(BaseModel):
     """
@@ -45,7 +58,9 @@ class UserProfile(BaseModel):
     model_provider: ModelProvider = ModelProvider.OPENAI
     model_name: str = "gpt-4o"
     temperature: float = 0.7
-    allowed_tools: List[str] = Field(default_factory=lambda: ["*"]) 
+    allowed_tools: List[str] = Field(default_factory=lambda: ["*"])
+    # Link to a permission schema
+    permission_schema: str = "default"
     
 class AgentConfig(BaseModel):
     """
@@ -54,3 +69,8 @@ class AgentConfig(BaseModel):
     default_profile: str = "default"
     plugin_dir: str = "~/.aigent/tools"
     tool_call_preview_length: int = 100
+    
+    # Permission Schemas definitions
+    permission_schemas: List[PermissionSchema] = Field(default_factory=lambda: [
+        PermissionSchema(name="default", default_policy=PermissionPolicy.ASK, tools={"fs_read": PermissionPolicy.ALLOW})
+    ])

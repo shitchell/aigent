@@ -86,6 +86,44 @@ async def run_cli(args):
                     elif event.type == EventType.ERROR:
                         print(HTML(f"<red>Error: {event.content}</red>"))
 
+                    elif event.type == EventType.APPROVAL_REQUEST:
+                        if streaming_text:
+                            sys.stdout.write("\n")
+                            streaming_text = False
+                            
+                        tool = event.metadata.get("tool")
+                        args = event.metadata.get("input")
+                        req_id = event.metadata.get("request_id")
+                        
+                        print(HTML(f"<orange>✋ Permission Request: {tool}</orange>"))
+                        print(f"   Args: {args}")
+                        
+                        # Prompt user
+                        # We need to break out of patch_stdout to prompt properly?
+                        # Or use session inside? 
+                        # Since we are inside patch_stdout context, print works.
+                        # But prompt_async?
+                        
+                        decision = "deny"
+                        while True:
+                            ans = await session.prompt_async(HTML("   <orange>Allow? [y/n/a(lways tool)/s(smart)]: </orange>"))
+                            ans = ans.lower().strip()
+                            if ans in ['y', 'yes']:
+                                decision = "allow"
+                                break
+                            elif ans in ['n', 'no']:
+                                decision = "deny"
+                                break
+                            elif ans in ['a', 'always']:
+                                decision = "always_tool"
+                                break
+                            elif ans in ['s', 'smart']:
+                                decision = "always_smart"
+                                break
+                        
+                        # Send decision back to engine
+                        engine.authorizer.resolve_request(req_id, {"decision": decision})
+
                 if streaming_text:
                     sys.stdout.write("\n")
                     
