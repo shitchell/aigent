@@ -15,9 +15,6 @@ import uvicorn
 
 app = FastAPI()
 
-# Serve static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 SESSIONS_DIR = Path.home() / ".aigent" / "sessions"
 SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -196,10 +193,6 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-@app.get("/")
-async def get():
-    return FileResponse('static/index.html')
-
 @app.get("/api/profiles")
 async def get_profiles():
     pm = ProfileManager()
@@ -297,6 +290,21 @@ async def run_server(args) -> None:
     manager.yolo_mode = args.yolo
     if args.yolo:
         print("\033[91mWARNING: Server running in YOLO Mode. All permission checks are DISABLED.\033[0m")
+    
+    # Dynamic Static Mount
+    pm = ProfileManager()
+    pm.load_profiles()
+    static_dir = pm.config.server.static_dir
+    static_path = Path(static_dir).expanduser().resolve()
+    
+    if not static_path.exists():
+        print(f"\033[93mWarning: Static directory not found at {static_path}. Web UI may not work.\033[0m")
+    
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+    
+    @app.get("/")
+    async def root():
+        return FileResponse(static_path / "index.html")
         
     config = uvicorn.Config(app, host=args.host, port=args.port, log_level="info")
     server = uvicorn.Server(config)

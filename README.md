@@ -52,6 +52,7 @@ settings:
 server:
   host: "127.0.0.1"
   port: 8000
+  static_dir: "static" # Path to web UI assets
 
 # Define Authorization Policies
 permission_schemas:
