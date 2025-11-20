@@ -36,17 +36,19 @@ def test_welcome_screen(page: Page, run_server):
     page.goto(SERVER_URL)
     
     # Expect Welcome Screen
-    expect(page.locator("text=Welcome to Aigent")).to_be_visible()
+    expect(page.locator("h1:has-text('Welcome to Aigent')")).to_be_visible()
     
-    # Expect Profile Options (Mocked or Default)
-    expect(page.locator("text=default")).to_be_visible()
+    # Expect Profile Options
+    # Use more specific locator for the button inside the welcome screen list
+    expect(page.locator("button span:has-text('default')").first).to_be_visible()
 
 @pytest.mark.e2e
 def test_create_new_chat(page: Page, run_server):
     page.goto(SERVER_URL)
     
     # Click Default Profile to start
-    page.click("text=default")
+    # The button contains the span with text 'default'
+    page.click("button:has(span:text('default'))")
     
     # Should redirect to Chat Interface
     expect(page.locator("#chat-container")).to_be_visible()
@@ -57,7 +59,7 @@ def test_create_new_chat(page: Page, run_server):
 @pytest.mark.e2e
 def test_send_message(page: Page, run_server):
     page.goto(SERVER_URL)
-    page.click("text=default")
+    page.click("button:has(span:text('default'))")
     
     # Type message
     page.fill("input[placeholder='Type a message...']", "Hello Playwright")
@@ -66,15 +68,13 @@ def test_send_message(page: Page, run_server):
     # Expect User Message to appear
     expect(page.locator("text=Hello Playwright")).to_be_visible()
     
-    # Expect Aigent to reply (Typing... then Content)
-    # Since we don't have keys in CI/Test env usually, this might fail or show error
-    # But we check that the bubble appears
+    # Expect Aigent to reply
     expect(page.locator("text=Aigent")).to_be_visible()
 
 @pytest.mark.e2e
 def test_session_persistence(page: Page, run_server):
     page.goto(SERVER_URL)
-    page.click("text=default")
+    page.click("button:has(span:text('default'))")
     
     # Send message
     page.fill("input", "Memory Test")
