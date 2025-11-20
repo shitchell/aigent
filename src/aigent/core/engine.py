@@ -22,7 +22,7 @@ class AgentEngine:
         self.yolo = yolo
         self.memory_loader = MemoryLoader()
         self.plugin_loader = PluginLoader()
-        self.tools = []
+        self.tools: List[Any] = []
         self.llm: BaseChatModel = None # type: ignore
         self.history: List[BaseMessage] = []
         
@@ -145,9 +145,6 @@ class AgentEngine:
         
         async def wrapped_arun(*args, **kwargs):
             # Construct args dict for check
-            # We need to map args/kwargs to tool inputs?
-            # LangChain passes a single dict usually?
-            # If args[0] is a dict, use it.
             input_args = {}
             if args:
                 if isinstance(args[0], dict):
@@ -166,41 +163,14 @@ class AgentEngine:
         tool._arun = wrapped_arun
         return tool
 
-    async def stream(self, user_input: str) -> AsyncGenerator[AgentEvent, None]:
+    async def _run_agent_executor(self, user_input: str, user_name: Optional[str] = None) -> None:
         """
-        The main loop. Streams events as they happen.
+        Helper to run the agent and push events to the queue.
+        
+        Args:
+            user_input: The text input from the user.
+            user_name: Optional name of the user for history tracking.
         """
-        if not self.llm:
-            await self.initialize()
-
-        # Add user message to history
-        self.history.append(HumanMessage(content=user_input))
-
-        # We use the raw LLM + Tool calling loop manually or use a prebuilt agent.
-        # For maximum control and "Simplicity" (avoiding AgentExecutor blackbox), 
-        # let's use the model directly.
-        # However, handling the "Loop" (Model -> Tool -> Model) manually is complex.
-        # Let's use LangChain's AgentExecutor for now as it provides the robust loop 
-        # and astream_events support.
-
-        # Construct a temporary agent for this execution
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", "{system_message}"),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-
-        # Create the agent runnable
-        agent = create_tool_calling_agent(self.llm, self.tools, prompt)
-        agent_executor = AgentExecutor(agent=agent, tools=self.tools, verbose=False)
-
-        # Extract system message content
-        system_msg_content = self.history[0].content if self.history else ""
-        chat_history_safe = self.history[1:-1] # Exclude system and latest human (passed as input)
-
-    async def _run_agent_executor(self, user_input: str, user_name: Optional[str] = None):
-        """Helper to run the agent and push events to the queue."""
         from langchain.agents import create_tool_calling_agent, AgentExecutor
         from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
@@ -293,10 +263,16 @@ class AgentEngine:
         except Exception as e:
             await self._emit_event(AgentEvent(type=EventType.ERROR, content=str(e)))
 
-
     async def stream(self, user_input: str, user_name: Optional[str] = None) -> AsyncGenerator[AgentEvent, None]:
         """
         The main loop. Streams events from the queue as they happen.
+        
+        Args:
+            user_input: The text input from the user.
+            user_name: Optional name of the user for history tracking.
+            
+        Yields:
+            AgentEvent: Events generated during execution.
         """
         if not self.llm:
             await self.initialize()
@@ -319,3 +295,6 @@ class AgentEngine:
         # Check for task crash
         if task.done() and task.exception():
             yield AgentEvent(type=EventType.ERROR, content=f"Engine Crash: {task.exception()}")
+
+
+

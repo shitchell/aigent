@@ -1,7 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Any
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, messages_to_dict, messages_from_dict
 
 from aigent.core.engine import AgentEngine
@@ -236,8 +236,9 @@ async def websocket_endpoint(
                 if isinstance(msg, dict) and msg.get("type") == "approval_response":
                     # Handle Approval
                     engine = manager.sessions[session_id]
-                    if engine.authorizer:
-                        engine.authorizer.resolve_request(msg.get("request_id"), msg)
+                    req_id = msg.get("request_id")
+                    if engine.authorizer and req_id:
+                        engine.authorizer.resolve_request(str(req_id), msg)
                     continue
             except json.JSONDecodeError:
                 pass # Treat as raw chat message
@@ -286,7 +287,13 @@ async def process_chat_message(session_id: str, user_input: str, user_name: str 
             error_event = AgentEvent(type=EventType.ERROR, content=str(e))
             await manager.broadcast(session_id, error_event.to_json())
 
-async def run_server(args):
+async def run_server(args) -> None:
+    """
+    Starts the Uvicorn server for the Web Daemon.
+    
+    Args:
+        args: Parsed command line arguments (host, port, yolo).
+    """
     manager.yolo_mode = args.yolo
     if args.yolo:
         print("\033[91mWARNING: Server running in YOLO Mode. All permission checks are DISABLED.\033[0m")

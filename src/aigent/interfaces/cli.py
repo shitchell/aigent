@@ -125,7 +125,8 @@ async def run_cli(args):
                                 break
                         
                         # Send decision back to engine
-                        engine.authorizer.resolve_request(req_id, {"decision": decision})
+                        if req_id:
+                            engine.authorizer.resolve_request(str(req_id), {"decision": decision})
 
                 if streaming_text:
                     sys.stdout.write("\n")
