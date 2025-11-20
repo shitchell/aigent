@@ -62,9 +62,25 @@ async def run_cli(args):
                         if streaming_text:
                             sys.stdout.write("\n")
                             streaming_text = False
-                        print(HTML(f"<yellow>🛠  {event.content}</yellow>"))
+                            
+                        # Format Input
+                        input_args = event.metadata.get("input", {})
+                        formatted_args = ", ".join([f"{k}={repr(v)}" for k, v in input_args.items()])
+                        
+                        # Truncate
+                        limit = profile_manager.config.tool_call_preview_length
+                        if len(formatted_args) > limit:
+                            formatted_args = formatted_args[:limit] + "..."
+                            
+                        tool_name = event.content.replace("Calling tool: ", "")
+                        print(HTML(f"<yellow>🛠  {tool_name}({formatted_args})</yellow>"))
                         
                     elif event.type == EventType.TOOL_END:
+                        # We don't truncate Output here (or do we want to?)
+                        # Current code truncates to 100 chars.
+                        # Maybe we should respect the config setting too?
+                        # But output is usually huge. Let's stick to 100 or make output_preview_length?
+                        # For now, let's assume tool_call_preview_length applies to input args only as requested.
                         print(HTML(f"<grey>   -> {event.content[:100]}...</grey>"))
                         
                     elif event.type == EventType.ERROR:
