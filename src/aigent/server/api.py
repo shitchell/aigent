@@ -29,6 +29,7 @@ class ConnectionManager:
         self.sessions: Dict[str, AgentEngine] = {}
         # session_id -> Lock (to prevent concurrent engine runs in same session)
         self.locks: Dict[str, asyncio.Lock] = {}
+        self.yolo_mode: bool = False
 
     async def connect(self, websocket: WebSocket, session_id: str, profile_name: str = "default") -> bool:
         await websocket.accept()
@@ -50,7 +51,7 @@ class ConnectionManager:
                         print(f"Profile {profile_name} not found, falling back to default")
                         profile = pm.get_profile("default")
                         
-                    engine = AgentEngine(profile)
+                    engine = AgentEngine(profile, yolo=self.yolo_mode)
                     await engine.initialize()
                     self.sessions[session_id] = engine
                 except Exception as e:
@@ -177,7 +178,7 @@ class ConnectionManager:
             except:
                 profile = pm.get_profile("default")
                 
-            engine = AgentEngine(profile)
+            engine = AgentEngine(profile, yolo=self.yolo_mode)
             await engine.initialize()
             
             # Inject history
@@ -282,6 +283,10 @@ async def process_chat_message(session_id: str, user_input: str):
             await manager.broadcast(session_id, error_event.to_json())
 
 async def run_server(args):
+    manager.yolo_mode = args.yolo
+    if args.yolo:
+        print("\033[91mWARNING: Server running in YOLO Mode. All permission checks are DISABLED.\033[0m")
+        
     config = uvicorn.Config(app, host=args.host, port=args.port, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()

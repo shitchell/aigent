@@ -16,8 +16,9 @@ from aigent.core.tools import fs_read, fs_write, fs_patch, bash_execute
 from aigent.core.permissions import Authorizer
 
 class AgentEngine:
-    def __init__(self, profile: UserProfile):
+    def __init__(self, profile: UserProfile, yolo: bool = False):
         self.profile = profile
+        self.yolo = yolo
         self.memory_loader = MemoryLoader()
         self.plugin_loader = PluginLoader()
         self.tools = []
@@ -36,23 +37,22 @@ class AgentEngine:
         Async initialization: loads tools, reads memory files, sets up LLM.
         """
         # Initialize Authorizer
-        # Construct schema from profile (or default)
-        # For V1, we construct a default schema or load from config?
-        # Profile has 'permission_schema' string name.
-        # We need to fetch that from AgentConfig.
-        # But AgentEngine doesn't have access to AgentConfig directly (it has UserProfile).
-        # We should pass the PermissionSchema into AgentEngine constructor or resolve it here.
-        # Simplification: Create a default schema for now.
+        
+        # Check YOLO mode
+        default_policy = PermissionPolicy.ALLOW if self.yolo else PermissionPolicy.ASK
         
         # TODO: Load actual schema from settings.yaml via ProfileManager
-        schema = PermissionSchema(name="dynamic", default_policy=PermissionPolicy.ASK)
-        # Override core tools defaults
-        schema.tools = {
-            "fs_read": PermissionPolicy.ALLOW,
-            "bash_execute": PermissionPolicy.ASK,
-            "fs_write": PermissionPolicy.ASK,
-            "fs_patch": PermissionPolicy.ASK
-        }
+        schema = PermissionSchema(name="dynamic", default_policy=default_policy)
+        
+        if not self.yolo:
+            # Override core tools defaults only if NOT in YOLO mode
+            # If YOLO, everything defaults to ALLOW.
+            schema.tools = {
+                "fs_read": PermissionPolicy.ALLOW,
+                "bash_execute": PermissionPolicy.ASK,
+                "fs_write": PermissionPolicy.ASK,
+                "fs_patch": PermissionPolicy.ASK
+            }
         
         self.authorizer = Authorizer(schema, self._emit_event)
 

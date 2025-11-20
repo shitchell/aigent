@@ -18,8 +18,11 @@ async def run_cli(args):
         return
 
     # 2. Initialize Engine
-    engine = AgentEngine(profile)
+    engine = AgentEngine(profile, yolo=args.yolo)
     print(f"Initializing agent '{profile.name}'...")
+    if args.yolo:
+        print(HTML("<red><b>WARNING: YOLO Mode Enabled. Permissions checks DISABLED.</b></red>"))
+
     try:
         await engine.initialize()
     except Exception as e:

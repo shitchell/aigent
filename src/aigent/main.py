@@ -22,17 +22,22 @@ def entry_point() -> None:
     # Chat Command (CLI)
     chat_parser = subparsers.add_parser("chat", help="Start the CLI chat session")
     chat_parser.add_argument("--profile", type=str, default="default", help="Agent profile to load")
+    chat_parser.add_argument("--yolo", action="store_true", help="Disable all permission checks (Danger!)")
 
     # Serve Command (Web Daemon)
     serve_parser = subparsers.add_parser("serve", help="Start the API/Web daemon")
     serve_parser.add_argument("--host", type=str, default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8000)
+    serve_parser.add_argument("--yolo", action="store_true", help="Disable all permission checks server-wide (Danger!)")
 
     args = parser.parse_args()
 
     if args.command == "serve":
         print(f"Starting server on {args.host}:{args.port}...")
-        asyncio.run(run_server(args))
+        try:
+            asyncio.run(run_server(args))
+        except KeyboardInterrupt:
+            print("\nServer stopped by user.")
     elif args.command == "chat":
         print(f"Starting chat with profile: {args.profile}")
         asyncio.run(run_cli(args))
