@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aigent</title>
+    <title>aigent</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/alpinejs" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/markdown-it/13.0.1/markdown-it.min.js"></script>
@@ -24,7 +24,7 @@
     <!-- Sidebar -->
     <div class="w-64 bg-gray-900 border-r border-gray-700 flex flex-col">
         <div class="h-16 border-b border-gray-700 flex justify-between items-center px-4">
-            <h1 class="text-xl font-bold text-blue-400">Aigent</h1>
+            <h1 class="text-xl font-bold text-blue-400">aigent</h1>
             <!-- User Settings Trigger -->
             <div x-data="{ open: false }" class="relative">
                 <button @click="open = !open" class="text-gray-400 hover:text-white transition">
@@ -72,7 +72,7 @@
             </template>
         </div>
 
-        <div class="p-5 border-t border-gray-700 space-y-2" x-data="{ showProfiles: false }">
+        <div class="p-8 border-t border-gray-700 space-y-2" x-data="{ showProfiles: false }">
             
             <!-- New Chat Button Group -->
             <div class="relative">
@@ -108,8 +108,8 @@
         <!-- WELCOME SCREEN -->
         <div x-show="!sessionId" class="flex-1 flex flex-col items-center justify-center p-10 space-y-8 bg-gray-900">
             <div class="text-center space-y-2">
-                <h1 class="text-4xl font-bold text-blue-400 tracking-tight">Welcome to Aigent</h1>
-                <p class="text-gray-400 text-lg">Select a persona to start a new collaboration.</p>
+                <h1 class="text-4xl font-bold text-blue-400 tracking-tight">welcome to aigent</h1>
+                <p class="text-gray-400 text-lg">select a persona and begin a collaboration.</p>
             </div>
 
             <div class="w-full max-w-md space-y-4 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-2xl">
@@ -168,7 +168,7 @@
                     <!-- AI Message -->
                     <div x-show="msg.role === 'ai'" class="self-start w-full max-w-[90%]">
                         <div class="flex items-center gap-2 mb-1">
-                            <span class="text-xs font-bold text-blue-400">Aigent</span>
+                            <span class="text-xs font-bold text-blue-400">aigent</span>
                             <span x-show="msg.loading" class="text-[10px] text-gray-500 animate-pulse">Typing...</span>
                         </div>
 
@@ -221,8 +221,8 @@
         </div>
 
         <!-- Input Area -->
-        <div class="p-6 border-t border-gray-700 bg-gray-900">
-            <form @submit.prevent="sendMessage" class="flex gap-3 max-w-4xl mx-auto">
+        <div class="p-6">
+            <form @submit.prevent="sendMessage" class="flex gap-3">
                 <input x-model="input" type="text" 
                     class="flex-1 bg-gray-800 border border-gray-600 rounded-xl p-4 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition shadow-inner" 
                     placeholder="Type a message..." 
