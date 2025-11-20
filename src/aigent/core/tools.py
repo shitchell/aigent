@@ -170,8 +170,17 @@ def fs_patch(
             lineterm=""
         )
         
-        diff_text = "\n".join(list(diff))
-        return f"Successfully patched {path}.\n\nDiff:\n{diff_text}"
+        # Filter out git-style headers (---, +++, @@)
+        # Content lines always start with ' ', '+', or '-'
+        diff_lines = [
+            line for line in diff 
+            if not line.startswith(('---', '+++', '@@'))
+        ]
+        
+        if not diff_lines:
+             return f"Successfully patched {path} (No effective changes)."
+
+        return "\n".join(diff_lines)
         
     except Exception as e:
         return f"Error patching file: {e}"
