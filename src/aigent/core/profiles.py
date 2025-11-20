@@ -2,7 +2,7 @@ import os
 import yaml
 from typing import Dict, Optional
 from pathlib import Path
-from aigent.core.schemas import UserProfile
+from aigent.core.schemas import UserProfile, AgentConfig
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "aigent" / "profiles.yaml"
 
@@ -10,6 +10,7 @@ class ProfileManager:
     def __init__(self, config_path: Path = DEFAULT_CONFIG_PATH):
         self.config_path = config_path
         self._profiles: Dict[str, UserProfile] = {}
+        self.config = AgentConfig()
         self.loaded = False
 
     def load_profiles(self) -> None:
@@ -26,7 +27,11 @@ class ProfileManager:
         try:
             with open(self.config_path, "r") as f:
                 data = yaml.safe_load(f) or {}
-                
+            
+            # Load Global Settings
+            settings_data = data.get("settings", {})
+            self.config = AgentConfig(**settings_data)
+
             # Expecting a dict structure: { "profiles": { "name": { ... } } }
             # or just a list of profiles. Let's assume a dict of named profiles for simplicity.
             profiles_data = data.get("profiles", {})

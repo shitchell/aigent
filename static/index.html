@@ -164,11 +164,16 @@
                         <template x-for="tool in msg.tools">
                             <div class="mb-2 ml-2 bg-gray-900/50 border border-gray-700 rounded overflow-hidden text-xs font-mono group hover:border-gray-600 transition">
                                 <div class="flex justify-between bg-gray-800 px-3 py-1 text-yellow-500">
-                                    <span x-text="'🛠 ' + tool.name"></span>
+                                    <span x-text="'🛠 ' + tool.name + '(' + formatToolInput(tool.input)"></span>
                                     <span x-show="!tool.result" class="animate-pulse">Running...</span>
                                 </div>
-                                <div class="p-2 text-gray-400 border-b border-gray-800 bg-gray-900/30" x-text="tool.input"></div>
-                                <div x-show="tool.result" class="p-2 text-green-400 max-h-32 overflow-y-auto">
+                                <!-- Optional: Show full input on hover or click? For now, keep it simple. -->
+                                <!-- Previously we showed input in a div below. Let's hide it if we show it in header, or show nicely formatted? -->
+                                <!-- The prompt asked for "Calling tool: bash_execute(command='...')" -->
+                                <!-- So I put it in the header span above. -->
+                                <!-- I will hide the raw input div below to be cleaner, or keep it for full details? -->
+                                <!-- Let's keep the output div. -->
+                                <div x-show="tool.result" class="p-2 text-green-400 max-h-32 overflow-y-auto whitespace-pre-wrap font-mono text-[10px]">
                                     <span x-text="'-> ' + tool.result"></span>
                                 </div>
                             </div>
@@ -210,11 +215,13 @@
                 savedSessions: [],
                 joinInput: '',
                 userId: 'User-' + Math.floor(Math.random() * 1000), // Simple random ID
-                md: window.markdownit(),
+                md: window.markdownit({ html: false, linkify: true }),
                 profiles: ['default'], // Fallback
+                config: { tool_call_preview_length: 100 }, // Default
 
                 init() {
                     this.fetchProfiles();
+                    this.fetchConfig();
                     
                     // Load saved sessions
                     const saved = localStorage.getItem('aigent_sessions_v2');
@@ -253,6 +260,41 @@
                         this.profiles = await res.json();
                     } catch (e) {
                         console.error("Failed to fetch profiles", e);
+                    }
+                },
+
+                async fetchConfig() {
+                    try {
+                        const res = await fetch('/api/config');
+                        this.config = await res.json();
+                    } catch (e) {
+                        console.error("Failed to fetch config", e);
+                    }
+                },
+
+                formatToolInput(inputStr) {
+                    try {
+                        // inputStr is already JSON stringified in handleEvent, wait no.
+                        // In handleEvent: input: JSON.stringify(event.metadata.input)
+                        // So here it is a string.
+                        // Let's parse it to format it nicely if it's JSON.
+                        const obj = JSON.parse(inputStr);
+                        
+                        // Construct a function-call like string: param='value'
+                        const parts = [];
+                        for (const [k, v] of Object.entries(obj)) {
+                            parts.push(`${k}='${v}'`);
+                        }
+                        const full = parts.join(", ");
+                        
+                        // Truncate
+                        const maxLen = this.config.tool_call_preview_length || 100;
+                        if (full.length > maxLen) {
+                            return full.substring(0, maxLen) + '...)';
+                        }
+                        return full + ")";
+                    } catch (e) {
+                        return inputStr;
                     }
                 },
 

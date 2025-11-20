@@ -203,6 +203,13 @@ async def get_profiles():
         pm.load_profiles()
     return list(pm._profiles.keys())
 
+@app.get("/api/config")
+async def get_config():
+    pm = ProfileManager()
+    if not pm.loaded:
+        pm.load_profiles()
+    return pm.config.dict()
+
 @app.websocket("/ws/chat/{session_id}")
 async def websocket_endpoint(
     websocket: WebSocket, 

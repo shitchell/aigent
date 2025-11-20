@@ -53,3 +53,4 @@ class AgentConfig(BaseModel):
     """
     default_profile: str = "default"
     plugin_dir: str = "~/.aigent/tools"
+    tool_call_preview_length: int = 100
