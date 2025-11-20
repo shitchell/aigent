@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aigent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/markdown-it/13.0.1/markdown-it.min.js"></script>
+    <style>
+        body { background-color: #1a1b26; color: #c0caf5; font-family: 'Segoe UI', sans-serif; }
+        .prose { color: #c0caf5; }
+        .prose code { color: #7aa2f7; background: #24283b; padding: 0.2em 0.4em; border-radius: 4px; }
+        .prose pre { background: #24283b; padding: 1em; border-radius: 8px; }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1a1b26; }
+        ::-webkit-scrollbar-thumb { background: #414868; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #565f89; }
+    </style>
+</head>
+<body class="h-screen flex overflow-hidden" x-data="app()">
+
+    <!-- Sidebar -->
+    <div class="w-64 bg-gray-900 border-r border-gray-700 flex flex-col">
+        <div class="p-4 border-b border-gray-700">
+            <h1 class="text-xl font-bold text-blue-400">Aigent</h1>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto p-2 space-y-2">
+            <div class="text-xs text-gray-500 uppercase font-semibold px-2 mb-2">My Chats</div>
+            <template x-for="session in savedSessions" :key="session.id">
+                <div class="group relative flex items-center w-full rounded hover:bg-gray-800 transition"
+                     :class="session.id === sessionId ? 'bg-gray-800 text-blue-300' : 'text-gray-400'">
+                    
+                    <button 
+                        @click="switchSession(session.id)"
+                        class="flex-1 text-left px-3 py-2 text-sm truncate focus:outline-none"
+                        x-text="session.name || session.id">
+                    </button>
+
+                    <!-- Context Menu Trigger -->
+                    <div class="relative" x-data="{ open: false }">
+                        <button @click.stop="open = !open" @click.outside="open = false" 
+                                class="p-2 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-white transition">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                        </button>
+
+                        <!-- Dropdown -->
+                        <div x-show="open" 
+                             class="absolute right-0 top-full mt-1 w-32 bg-gray-900 border border-gray-700 rounded shadow-xl z-50 py-1 text-xs text-gray-300"
+                             style="display: none;">
+                            <button @click.stop="renameSessionPrompt(session.id); open = false" class="w-full text-left px-3 py-2 hover:bg-gray-800">Rename</button>
+                            <button @click.stop="copyId(session.id); open = false" class="w-full text-left px-3 py-2 hover:bg-gray-800">Copy ID</button>
+                            <div class="border-t border-gray-800 my-1"></div>
+                            <button @click.stop="deleteSession(session.id); open = false" class="w-full text-left px-3 py-2 hover:bg-gray-800 text-red-400">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <div class="p-4 border-t border-gray-700 space-y-2" x-data="{ showProfiles: false }">
+            
+            <!-- New Chat Button Group -->
+            <div class="relative">
+                <button @click="showProfiles = !showProfiles" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded text-sm font-semibold transition flex items-center justify-center gap-2">
+                    <span>+ New Chat</span>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </button>
+                
+                <!-- Profile Dropdown -->
+                <div x-show="showProfiles" @click.outside="showProfiles = false" 
+                     class="absolute bottom-full left-0 w-full mb-2 bg-gray-800 border border-gray-700 rounded shadow-xl z-50 max-h-48 overflow-y-auto"
+                     style="display: none;">
+                    <div class="text-xs text-gray-500 px-3 py-2 uppercase font-bold bg-gray-900">Select Profile</div>
+                    <template x-for="p in profiles" :key="p">
+                        <button @click="createSession(p); showProfiles = false" 
+                                class="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-blue-600 hover:text-white transition">
+                            <span x-text="p"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <div class="flex gap-2">
+                <input x-model="joinInput" type="text" placeholder="Join ID..." class="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500">
+                <button @click="switchSession(joinInput)" class="bg-gray-700 hover:bg-gray-600 text-white px-2 rounded text-xs">Go</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Area (Switches between Welcome & Chat) -->
+    <div class="flex-1 flex flex-col h-full relative">
+        
+        <!-- WELCOME SCREEN -->
+        <div x-show="!sessionId" class="flex-1 flex flex-col items-center justify-center p-10 space-y-8 bg-gray-900">
+            <div class="text-center space-y-2">
+                <h1 class="text-4xl font-bold text-blue-400 tracking-tight">Welcome to Aigent</h1>
+                <p class="text-gray-400 text-lg">Select a persona to start a new collaboration.</p>
+            </div>
+
+            <div class="w-full max-w-md space-y-4 bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-2xl">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Choose Profile</label>
+                    <div class="grid grid-cols-1 gap-2">
+                        <template x-for="p in profiles" :key="p">
+                            <button @click="createSession(p)" 
+                                    class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-gray-700 hover:bg-blue-600 hover:text-white text-gray-300 transition group">
+                                <span x-text="p" class="font-mono text-sm"></span>
+                                <svg class="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CHAT INTERFACE -->
+        <div x-show="sessionId" class="flex-1 flex flex-col h-full relative">
+            
+            <!-- Header -->
+            <div class="h-14 border-b border-gray-700 flex items-center justify-between px-6 bg-gray-900/50 backdrop-blur">
+            <div class="flex items-center gap-4" x-data="{ editing: false }">
+                <div x-show="!editing" @click="editing = true" class="cursor-pointer hover:text-white transition flex items-center gap-2 group">
+                    <h2 class="text-sm font-bold text-gray-200" x-text="getSessionName(sessionId)"></h2>
+                    <span class="text-xs text-gray-600 group-hover:text-gray-500" x-text="sessionId"></span>
+                    <svg class="w-3 h-3 text-gray-600 group-hover:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                </div>
+                <input x-show="editing" 
+                       @click.outside="editing = false" 
+                       @keydown.enter="updateSessionName(sessionId, $el.value); editing = false"
+                       :value="getSessionName(sessionId)"
+                       class="bg-gray-800 text-white text-sm px-2 py-1 rounded focus:outline-none border border-blue-500"
+                       autofocus>
+            </div>
+            <div class="flex gap-2 items-center">
+                <div class="w-2 h-2 rounded-full transition-colors duration-300" :class="connected ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-red-500'"></div>
+                <span x-text="connected ? 'Live' : 'Offline'" class="text-xs text-gray-500"></span>
+            </div>
+        </div>
+
+        <!-- Chat Messages -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth" id="chat-container">
+            <template x-for="msg in messages" :key="msg.id">
+                <div class="flex flex-col gap-2 animate-fade-in">
+                    
+                    <!-- User Message -->
+                    <div x-show="msg.role === 'user'" class="self-end flex flex-col items-end max-w-[80%]">
+                         <span class="text-[10px] text-gray-500 mr-1" x-text="msg.userId || 'User'"></span>
+                        <div class="bg-blue-600 text-white p-3 rounded-2xl rounded-tr-sm shadow-lg">
+                            <p x-text="msg.content"></p>
+                        </div>
+                    </div>
+
+                    <!-- AI Message -->
+                    <div x-show="msg.role === 'ai'" class="self-start w-full max-w-[90%]">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-xs font-bold text-blue-400">Aigent</span>
+                            <span x-show="msg.loading" class="text-[10px] text-gray-500 animate-pulse">Typing...</span>
+                        </div>
+
+                        <!-- Tool Calls -->
+                        <template x-for="tool in msg.tools">
+                            <div class="mb-2 ml-2 bg-gray-900/50 border border-gray-700 rounded overflow-hidden text-xs font-mono group hover:border-gray-600 transition">
+                                <div class="flex justify-between bg-gray-800 px-3 py-1 text-yellow-500">
+                                    <span x-text="'🛠 ' + tool.name"></span>
+                                    <span x-show="!tool.result" class="animate-pulse">Running...</span>
+                                </div>
+                                <div class="p-2 text-gray-400 border-b border-gray-800 bg-gray-900/30" x-text="tool.input"></div>
+                                <div x-show="tool.result" class="p-2 text-green-400 max-h-32 overflow-y-auto">
+                                    <span x-text="'-> ' + tool.result"></span>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- Text Content -->
+                        <div x-show="msg.content" class="bg-gray-800 p-4 rounded-2xl rounded-tl-sm shadow-lg prose max-w-none" x-html="renderMarkdown(msg.content)"></div>
+                    </div>
+
+                </div>
+            </template>
+        </div>
+
+        <!-- Input Area -->
+        <div class="p-6 border-t border-gray-700 bg-gray-900">
+            <form @submit.prevent="sendMessage" class="flex gap-3 max-w-4xl mx-auto">
+                <input x-model="input" type="text" 
+                    class="flex-1 bg-gray-800 border border-gray-600 rounded-xl p-4 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition shadow-inner" 
+                    placeholder="Type a message..." 
+                    :disabled="!connected">
+                <button type="submit" 
+                    class="bg-blue-600 px-6 py-3 rounded-xl hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 transition font-semibold shadow-lg" 
+                    :disabled="!connected">
+                    Send
+                </button>
+            </form>
+        </div>
+        </div> <!-- End of Chat Interface -->
+    </div>
+
+    <script>
+        function app() {
+            return {
+                ws: null,
+                connected: false,
+                input: '',
+                messages: [],
+                sessionId: '',
+                savedSessions: [],
+                joinInput: '',
+                userId: 'User-' + Math.floor(Math.random() * 1000), // Simple random ID
+                md: window.markdownit(),
+                profiles: ['default'], // Fallback
+
+                init() {
+                    this.fetchProfiles();
+                    
+                    // Load saved sessions
+                    const saved = localStorage.getItem('aigent_sessions_v2');
+                    if (saved) {
+                        this.savedSessions = JSON.parse(saved);
+                    } else {
+                        // Migrate old format if exists
+                        const old = localStorage.getItem('aigent_sessions');
+                        if (old) {
+                            const oldList = JSON.parse(old);
+                            this.savedSessions = oldList.map(id => ({ id: id, name: id }));
+                            this.persistSessions();
+                        }
+                    }
+
+                    // Check URL for session
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const sid = urlParams.get('session');
+
+                    if (sid) {
+                        this.connectTo(sid);
+                        // Ensure it's in our list
+                        if (!this.savedSessions.find(s => s.id === sid)) {
+                            this.savedSessions.unshift({ id: sid, name: sid });
+                            this.persistSessions();
+                        }
+                    } else {
+                        // Stay in Welcome Screen (sessionId is empty)
+                    }
+                },
+
+                async fetchProfiles() {
+                    try {
+                        const res = await fetch('/api/profiles');
+                        this.profiles = await res.json();
+                    } catch (e) {
+                        console.error("Failed to fetch profiles", e);
+                    }
+                },
+
+                createSession(profile = 'default') {
+                    // Generate simple random ID (UUID-ish)
+                    const newId = 'chat-' + Math.random().toString(36).substring(2, 9);
+                    this.switchSession(newId, profile);
+                },
+
+                switchSession(sid, profile = null) {
+                    if (!sid) return;
+                    
+                    // Save logic
+                    if (!this.savedSessions.find(s => s.id === sid)) {
+                        this.savedSessions.unshift({ id: sid, name: sid });
+                        this.persistSessions();
+                    }
+                    
+                    // Update URL without reload
+                    const url = new URL(window.location);
+                    url.searchParams.set('session', sid);
+                    window.history.pushState({}, '', url);
+                    
+                    this.sessionId = sid;
+                    this.messages = []; // Clear view
+                    this.connectTo(sid, profile);
+                },
+
+                persistSessions() {
+                    localStorage.setItem('aigent_sessions_v2', JSON.stringify(this.savedSessions));
+                },
+
+                deleteSession(sid) {
+                    this.savedSessions = this.savedSessions.filter(s => s.id !== sid);
+                    this.persistSessions();
+                    if (this.sessionId === sid) {
+                         if (this.savedSessions.length > 0) {
+                             this.switchSession(this.savedSessions[0].id);
+                         } else {
+                             this.createSession();
+                         }
+                    }
+                },
+
+                renameSessionPrompt(sid) {
+                    const name = prompt("Rename chat:", this.getSessionName(sid));
+                    if (name) this.updateSessionName(sid, name);
+                },
+
+                updateSessionName(sid, newName) {
+                    const session = this.savedSessions.find(s => s.id === sid);
+                    if (session) {
+                        session.name = newName;
+                        this.persistSessions();
+                    }
+                },
+
+                getSessionName(sid) {
+                    const session = this.savedSessions.find(s => s.id === sid);
+                    return session ? session.name : sid;
+                },
+
+                copyId(sid) {
+                    navigator.clipboard.writeText(sid);
+                },
+
+                connectTo(sid, profile = null) {
+                    if (this.ws) {
+                        this.ws.close();
+                    }
+
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const host = window.location.host;
+                    
+                    // Append profile if provided (only used for NEW sessions on backend)
+                    let wsUrl = `${protocol}//${host}/ws/chat/${sid}?user_id=${this.userId}`;
+                    if (profile) {
+                        wsUrl += `&profile=${profile}`;
+                    }
+                    
+                    this.ws = new WebSocket(wsUrl);
+                    
+                    this.ws.onopen = () => {
+                        this.connected = true;
+                        this.joinInput = '';
+                    };
+                    
+                    this.ws.onclose = () => {
+                        this.connected = false;
+                        // Auto reconnect logic could go here
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        this.handleEvent(data);
+                    };
+                },
+
+                sendMessage() {
+                    if (!this.input.trim()) return;
+                    this.ws.send(this.input);
+                    this.input = '';
+                },
+
+                handleEvent(event) {
+                    // 1. User Input Event (Broadcasted back to us)
+                    if (event.type === 'user_input') {
+                        this.messages.push({
+                            id: Date.now(),
+                            role: 'user',
+                            content: event.content,
+                            userId: event.metadata?.user_id || 'User',
+                            tools: []
+                        });
+                        // Prepare AI bubble immediately after user speaks
+                        this.messages.push({
+                            id: Date.now() + 1,
+                            role: 'ai',
+                            content: '',
+                            tools: [],
+                            loading: true
+                        });
+                    } 
+                    // 2. AI Events
+                    else {
+                        // Find last AI message
+                        let aiMsg = this.messages[this.messages.length - 1];
+                        // Safety: ensure it exists and is AI
+                        if (!aiMsg || aiMsg.role !== 'ai') {
+                             aiMsg = {
+                                id: Date.now(),
+                                role: 'ai',
+                                content: '',
+                                tools: [],
+                                loading: true
+                            };
+                            this.messages.push(aiMsg);
+                        }
+
+                        if (event.type === 'token') {
+                            aiMsg.content += event.content;
+                        } else if (event.type === 'tool_start') {
+                            aiMsg.tools.push({
+                                name: event.content.replace("Calling tool: ", ""), 
+                                input: JSON.stringify(event.metadata.input),
+                                result: null
+                            });
+                        } else if (event.type === 'tool_end') {
+                            const tool = aiMsg.tools[aiMsg.tools.length - 1];
+                            if (tool) tool.result = event.content;
+                        } else if (event.type === 'finish') {
+                            aiMsg.loading = false;
+                        }
+                    }
+
+                    this.scrollToBottom();
+                },
+
+                renderMarkdown(text) {
+                    return this.md.render(text);
+                },
+
+                scrollToBottom() {
+                    this.$nextTick(() => {
+                        const container = document.getElementById('chat-container');
+                        container.scrollTop = container.scrollHeight;
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>

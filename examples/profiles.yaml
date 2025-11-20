@@ -1,0 +1,32 @@
+profiles:
+  default:
+    name: "default"
+    model_provider: "openai"
+    model_name: "gpt-4o-mini"
+    temperature: 0.7
+    allowed_tools: ["*"]
+
+  cheap:
+    name: "cheap"
+    model_provider: "google"
+    model_name: "gemini-1.5-flash"
+    temperature: 0.5
+
+  coder:
+    name: "coder"
+    model_provider: "anthropic"
+    # The current SOTA for coding
+    model_name: "claude-3-5-sonnet-20241022"
+    temperature: 0.1
+
+  gem3:
+    name: "gem3"
+    model_provider: "google"
+    model_name: "gemini-1.5-pro"
+    temperature: 0.7
+
+  grok:
+    name: "grok"
+    model_provider: "grok"
+    model_name: "grok-beta"
+    temperature: 0.7

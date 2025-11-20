@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aigent"
+version = "0.1.0"
+description = "A robust, async-first LangChain agent with CLI and Web interfaces."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "User", email = "user@example.com"}
+]
+dependencies = [
+    "langchain>=0.2.0",
+    "langchain-openai>=0.1.0", 
+    "langchain-anthropic>=0.1.0",
+    "langchain-google-genai>=0.1.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+    "prompt_toolkit>=3.0.43",
+    "aiofiles>=23.2.1",
+    "httpx>=0.27.0",
+    "pyyaml>=6.0.1",
+    "rich>=13.7.1",
+    "python-dotenv>=1.0.0" 
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0"
+]
+
+[project.scripts]
+aigent = "aigent.main:entry_point"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+disallow_untyped_defs = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
