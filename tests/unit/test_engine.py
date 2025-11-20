@@ -50,27 +50,58 @@ async def test_engine_stream_captures_history(mock_profile):
     async def mock_astream(*args, **kwargs):
         for event in mock_events:
             yield event
-
-    with patch("aigent.core.engine.create_tool_calling_agent"), \
-         patch("aigent.core.engine.AgentExecutor") as MockExecutor:
-        
+    
+    # We must patch where it is imported FROM because it is a local import inside the method
+    with patch("langchain.agents.create_tool_calling_agent"), \
+         patch("langchain.agents.AgentExecutor") as MockExecutor:
+         
         instance = MockExecutor.return_value
         instance.astream_events = mock_astream
-
+        
         # Run the stream
         events = []
         async for event in engine.stream("Hi"):
             events.append(event)
 
-        # Verify Events
-        assert len(events) == 3 # Token, Token, Finish
-        assert events[0].content == "Hello"
-        assert events[2].type == EventType.FINISH
+    # Verify Events
+    assert len(events) == 3 # Token, Token, Finish
+    assert events[0].content == "Hello"
+    assert events[2].type == EventType.FINISH
+    
+    # Verify History Capture (The Fix)
+    # History should have: [HumanMessage("Hi"), AIMessage("Hello World")]
+    assert len(engine.history) == 2
+    assert isinstance(engine.history[0], HumanMessage)
+    assert engine.history[0].content == "Hi"
+    assert isinstance(engine.history[1], AIMessage)
+    assert engine.history[1].content == "Hello World"
+
+@pytest.mark.asyncio
+async def test_stream_persists_user_name(mock_profile):
+    engine = AgentEngine(mock_profile)
+    engine.llm = MagicMock()
+    engine.history = []
+    
+    # We don't need to mock execution fully, just start stream
+    # But stream waits for task.
+    # So we need minimal mock.
+    
+    async def mock_astream(*args, **kwargs):
+        yield {"event": "on_chat_model_stream", "data": {"chunk": MagicMock(content="Hi")}}
+        yield {"event": "on_chain_end", "name": "AgentExecutor", "data": {"output": {"output": "Hi"}}}
+
+    with patch("langchain.agents.create_tool_calling_agent"), \
+         patch("langchain.agents.AgentExecutor") as MockExecutor:
+         
+        instance = MockExecutor.return_value
+        instance.astream_events = mock_astream
         
-        # Verify History Capture (The Fix)
-        # History should have: [HumanMessage("Hi"), AIMessage("Hello World")]
+        async for event in engine.stream("Hello Aigent", user_name="Bob"):
+            pass
+            
+        # Check History
         assert len(engine.history) == 2
-        assert isinstance(engine.history[0], HumanMessage)
-        assert engine.history[0].content == "Hi"
-        assert isinstance(engine.history[1], AIMessage)
-        assert engine.history[1].content == "Hello World"
+        human_msg = engine.history[0]
+        assert isinstance(human_msg, HumanMessage)
+        assert human_msg.content == "Hello Aigent"
+        assert human_msg.name == "Bob"

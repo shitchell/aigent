@@ -1,5 +1,5 @@
 import asyncio
-from typing import AsyncGenerator, List, Any
+from typing import List, AsyncGenerator, Any, Optional
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage, ToolMessage
 from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI
@@ -14,6 +14,7 @@ from aigent.core.memory import MemoryLoader
 from aigent.plugins.loader import PluginLoader
 from aigent.core.tools import fs_read, fs_write, fs_patch, bash_execute
 from aigent.core.permissions import Authorizer
+from aigent.core.profiles import ProfileManager
 
 class AgentEngine:
     def __init__(self, profile: UserProfile, yolo: bool = False):
