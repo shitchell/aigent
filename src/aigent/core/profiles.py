@@ -30,6 +30,11 @@ class ProfileManager:
             
             # Load Global Settings
             settings_data = data.get("settings", {})
+            
+            # Support loading permission_schemas from top-level
+            if "permission_schemas" in data:
+                settings_data["permission_schemas"] = data["permission_schemas"]
+                
             self.config = AgentConfig(**settings_data)
 
             # Expecting a dict structure: { "profiles": { "name": { ... } } }
@@ -93,3 +98,13 @@ class ProfileManager:
             raise KeyError(f"Profile '{name}' not found. Available: {list(self._profiles.keys())}")
             
         return self._profiles[name]
+
+    def get_permission_schema(self, name: str) -> Optional['PermissionSchema']:
+        """Retrieves a permission schema by name from the global config."""
+        if not self.loaded:
+            self.load_profiles()
+            
+        for schema in self.config.permission_schemas:
+            if schema.name == name:
+                return schema
+        return None

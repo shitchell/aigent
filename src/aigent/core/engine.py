@@ -38,21 +38,28 @@ class AgentEngine:
         """
         # Initialize Authorizer
         
-        # Check YOLO mode
-        default_policy = PermissionPolicy.ALLOW if self.yolo else PermissionPolicy.ASK
+        schema = None
         
-        # TODO: Load actual schema from settings.yaml via ProfileManager
-        schema = PermissionSchema(name="dynamic", default_policy=default_policy)
-        
-        if not self.yolo:
-            # Override core tools defaults only if NOT in YOLO mode
-            # If YOLO, everything defaults to ALLOW.
-            schema.tools = {
-                "fs_read": PermissionPolicy.ALLOW,
-                "bash_execute": PermissionPolicy.ASK,
-                "fs_write": PermissionPolicy.ASK,
-                "fs_patch": PermissionPolicy.ASK
-            }
+        # 1. YOLO Mode Override (Highest Priority)
+        if self.yolo:
+            schema = PermissionSchema(name="yolo", default_policy=PermissionPolicy.ALLOW)
+        else:
+            # 2. Load from Profile Config
+            pm = ProfileManager()
+            schema_name = self.profile.permission_schema
+            found_schema = pm.get_permission_schema(schema_name)
+            
+            if found_schema:
+                schema = found_schema
+            else:
+                # 3. Fallback/Default Safe Schema
+                schema = PermissionSchema(name="fallback_safe", default_policy=PermissionPolicy.ASK)
+                schema.tools = {
+                    "fs_read": PermissionPolicy.ALLOW,
+                    "bash_execute": PermissionPolicy.ASK,
+                    "fs_write": PermissionPolicy.ASK,
+                    "fs_patch": PermissionPolicy.ASK
+                }
         
         self.authorizer = Authorizer(schema, self._emit_event)
 

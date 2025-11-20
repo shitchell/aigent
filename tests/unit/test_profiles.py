@@ -57,3 +57,31 @@ profiles:
     # Check home expansion (simple check if it no longer starts with ~)
     assert not profile.context_files[0].startswith("~")
     assert "foo.md" in profile.context_files[0]
+
+def test_permission_schema_loading(tmp_path):
+    config_path = tmp_path / "settings.yaml"
+    
+    yaml_content = """
+permission_schemas:
+  - name: strict
+    default_policy: deny
+    tools:
+      fs_read: ask
+
+profiles:
+  audit_bot:
+    permission_schema: strict
+"""
+    config_path.write_text(yaml_content)
+    
+    pm = ProfileManager(config_path=config_path)
+    
+    # Check schema retrieval
+    schema = pm.get_permission_schema("strict")
+    assert schema is not None
+    assert schema.default_policy == "deny"
+    assert schema.tools["fs_read"] == "ask"
+    
+    # Check profile link
+    profile = pm.get_profile("audit_bot")
+    assert profile.permission_schema == "strict"
