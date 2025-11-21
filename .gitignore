@@ -7,3 +7,4 @@ dist/
 build/
 *.egg-info/
 .mypy_cache/
+_worktrees/
