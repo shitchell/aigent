@@ -50,22 +50,18 @@ async def ws_listener(ws, profile_config, console: Console):
             metadata = data.get("metadata", {})
             
             if event_type == EventType.TOKEN:
-                # Plain text streaming - robust and artifact-free
-                console.print(content, end="")
+                # Use native print for streaming to avoid Rich artifacts
+                print(content, end="", flush=True)
                 current_line_length += len(content)
             
             else:
                 # Non-token event: ensure we start on a new line if we were streaming
-                # Actually, we assume the stream ended? 
-                # Usually FINISH follows tokens.
                 pass
 
                 if event_type == EventType.TOOL_START:
                     # If we were streaming text, we might need a newline?
-                    # But usually tools happen before/after text.
-                    # Let's force a newline just in case
                     if current_line_length > 0:
-                        console.print()
+                        print() # Native print newline
                         current_line_length = 0
                         
                     input_args = metadata.get("input", {})
@@ -82,26 +78,28 @@ async def ws_listener(ws, profile_config, console: Console):
                     console.print(f"[grey50]{content}[/grey50]")
                     
                 elif event_type == EventType.ERROR:
-                    console.print(f"\n[red]Error: {content}[/red]")
+                    print()
+                    console.print(f"[red]Error: {content}[/red]")
                     current_line_length = 0
                     
                 elif event_type == EventType.SYSTEM:
-                    console.print(f"\n[green]System: {content}[/green]")
+                    print()
+                    console.print(f"[green]System: {content}[/green]")
                     current_line_length = 0
                     
                 elif event_type == EventType.HISTORY_CONTENT:
                     # Render history statically (Markdown is fine here)
                     console.print(Markdown(content))
-                    console.print() # Spacing
+                    print() # Spacing
                     
                 elif event_type == EventType.FINISH:
                     # End of turn
-                    console.print() 
+                    print() 
                     current_line_length = 0
                     
                 elif event_type == EventType.APPROVAL_REQUEST:
                     if current_line_length > 0:
-                        console.print()
+                        print()
                         current_line_length = 0
                         
                     tool = metadata.get("tool")
