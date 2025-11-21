@@ -55,7 +55,7 @@ async def ws_listener(ws, profile_config):
             if event_type == EventType.TOKEN:
                 current_text += content
                 if live_display is None:
-                    live_display = Live(Markdown(current_text), console=console, refresh_per_second=10)
+                    live_display = Live(Markdown(current_text), console=console, refresh_per_second=10, transient=True)
                     live_display.start()
                 else:
                     live_display.update(Markdown(current_text))
@@ -65,6 +65,9 @@ async def ws_listener(ws, profile_config):
                 if live_display:
                     live_display.stop()
                     live_display = None
+                    # Print final result permanently
+                    if current_text:
+                        console.print(Markdown(current_text))
                     current_text = ""
 
                 if event_type == EventType.TOOL_START:
