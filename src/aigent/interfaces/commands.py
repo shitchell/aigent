@@ -1,13 +1,13 @@
-from typing import Protocol, Dict, List, Type
+from typing import Protocol, Dict, List, Type, Any
 from dataclasses import dataclass
 from rich.console import Console
 from rich.markup import escape
-from aigent.core.engine import AgentEngine
+import json
 
 @dataclass
 class CommandContext:
     console: Console
-    engine: AgentEngine
+    websocket: Any 
     # Return True to stop the CLI loop (exit)
     should_exit: bool = False
 
@@ -50,10 +50,9 @@ class ResetCommand(BaseCommand):
     description = "Reset the agent's memory (keep system prompt)"
     
     async def execute(self, context: CommandContext) -> None:
-        if context.engine.history:
-            # Keep system prompt at index 0
-            context.engine.history = [context.engine.history[0]]
-        context.console.print("[green]History cleared.[/green]")
+        # Send command to server
+        msg = {"type": "command", "content": "/reset"}
+        await context.websocket.send(json.dumps(msg))
 
 class ExitCommand(BaseCommand):
     name = "/exit"

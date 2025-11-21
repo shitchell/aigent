@@ -13,10 +13,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import uvicorn
 
+from aigent.core.persistence import SessionManager
+
 app = FastAPI()
 
 SESSIONS_DIR = Path.home() / ".aigent" / "sessions"
-SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 class ConnectionManager:
     def __init__(self):
@@ -27,8 +28,37 @@ class ConnectionManager:
         # session_id -> Lock (to prevent concurrent engine runs in same session)
         self.locks: Dict[str, asyncio.Lock] = {}
         self.yolo_mode: bool = False
+        
+        self.session_manager = SessionManager(SESSIONS_DIR)
+        self.shutdown_task: Any = None # asyncio.Task
+
+    def _start_shutdown_timer(self):
+        """Starts a timer to kill the server if no connections exist."""
+        if self.shutdown_task:
+            self.shutdown_task.cancel()
+        
+        async def shutdown():
+            print("No active connections. Shutting down in 30 seconds...")
+            try:
+                await asyncio.sleep(30)
+                print("Shutting down server due to inactivity.")
+                # Force save all sessions? They are saved incrementally.
+                import os, signal
+                os.kill(os.getpid(), signal.SIGINT)
+            except asyncio.CancelledError:
+                pass
+            
+        self.shutdown_task = asyncio.create_task(shutdown())
+
+    def _cancel_shutdown_timer(self):
+        if self.shutdown_task:
+            self.shutdown_task.cancel()
+            self.shutdown_task = None
+            # print("Shutdown cancelled.")
 
     async def connect(self, websocket: WebSocket, session_id: str, profile_name: str = "default") -> bool:
+        self._cancel_shutdown_timer()
+        
         await websocket.accept()
         if session_id not in self.active_connections:
             self.active_connections[session_id] = []
@@ -36,25 +66,35 @@ class ConnectionManager:
 
         # Initialize Engine if needed
         if session_id not in self.sessions:
-            # Try to load from disk first
-            if not await self._load_session_from_disk(session_id):
-                # If no save file, create new with requested profile
+            # Try to load from persistence
+            session_data = await self.session_manager.load_session(session_id)
+            
+            if session_data:
+                # Rehydrate
+                profile_name = session_data.get("profile", "default")
+                # ... (continue to init engine)
+            
+            # Profile Loading logic
+            try:
+                pm = ProfileManager()
                 try:
-                    pm = ProfileManager()
-                    # Fallback to default if requested profile doesn't exist
-                    try:
-                        profile = pm.get_profile(profile_name)
-                    except Exception:
-                        print(f"Profile {profile_name} not found, falling back to default")
-                        profile = pm.get_profile("default")
-                        
-                    engine = AgentEngine(profile, yolo=self.yolo_mode)
-                    await engine.initialize()
-                    self.sessions[session_id] = engine
-                except Exception as e:
-                    print(f"Failed to initialize engine: {e}")
-                    await websocket.close(code=1000, reason=f"Init failed: {str(e)}")
-                    return False
+                    profile = pm.get_profile(profile_name)
+                except Exception:
+                    print(f"Profile {profile_name} not found, falling back to default")
+                    profile = pm.get_profile("default")
+                    
+                engine = AgentEngine(profile, yolo=self.yolo_mode)
+                await engine.initialize()
+                
+                # Inject History if loaded
+                if session_data and "history" in session_data:
+                    engine.history = session_data["history"]
+                    
+                self.sessions[session_id] = engine
+            except Exception as e:
+                print(f"Failed to initialize engine: {e}")
+                await websocket.close(code=1000, reason=f"Init failed: {str(e)}")
+                return False
             
             self.locks[session_id] = asyncio.Lock()
 
@@ -67,9 +107,13 @@ class ConnectionManager:
             if websocket in self.active_connections[session_id]:
                 self.active_connections[session_id].remove(websocket)
             if not self.active_connections[session_id]:
-                # Optional: Clean up session engine if empty? 
-                # For now, keep it alive for persistence.
+                # Last connection for this session closed
                 pass
+                
+        # Check GLOBAL connections
+        total_connections = sum(len(conns) for conns in self.active_connections.values())
+        if total_connections == 0:
+            self._start_shutdown_timer()
 
     async def broadcast(self, session_id: str, message: str):
         """Sends a raw string (JSON) to all sockets in a session"""
@@ -131,66 +175,6 @@ class ConnectionManager:
         if engine.history and isinstance(engine.history[-1], (AIMessage, ToolMessage)):
              await websocket.send_text(AgentEvent(type=EventType.FINISH).to_json())
 
-    async def _save_session_to_disk(self, session_id: str):
-        """Saves the current engine history to disk."""
-        if session_id not in self.sessions:
-            return
-            
-        engine = self.sessions[session_id]
-        # Convert messages to dicts
-        history_dicts = messages_to_dict(engine.history)
-        
-        data = {
-            "profile": engine.profile.name,
-            "history": history_dicts
-        }
-        
-        file_path = SESSIONS_DIR / f"{session_id}.json"
-        try:
-            with open(file_path, "w") as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            print(f"Failed to save session {session_id}: {e}")
-
-    async def _load_session_from_disk(self, session_id: str) -> bool:
-        """Attempts to load session history from disk. Returns True if successful."""
-        file_path = SESSIONS_DIR / f"{session_id}.json"
-        if not file_path.exists():
-            return False
-            
-        try:
-            with open(file_path, "r") as f:
-                data = json.load(f)
-            
-            # Handle legacy files (list of messages) vs new format (dict)
-            if isinstance(data, list):
-                history_dicts = data
-                profile_name = "default"
-            else:
-                history_dicts = data.get("history", [])
-                profile_name = data.get("profile", "default")
-            
-            messages = messages_from_dict(history_dicts)
-            
-            # Re-hydrate engine with correct profile
-            pm = ProfileManager()
-            try:
-                profile = pm.get_profile(profile_name)
-            except:
-                profile = pm.get_profile("default")
-                
-            engine = AgentEngine(profile, yolo=self.yolo_mode)
-            await engine.initialize()
-            
-            # Inject history
-            engine.history = messages
-            self.sessions[session_id] = engine
-            return True
-            
-        except Exception as e:
-            print(f"Failed to load session {session_id}: {e}")
-            return False
-
 manager = ConnectionManager()
 
 @app.get("/api/profiles")
@@ -226,13 +210,27 @@ async def websocket_endpoint(
             # Determine if it's a chat message or a control message (JSON)
             try:
                 msg = json.loads(data)
-                if isinstance(msg, dict) and msg.get("type") == "approval_response":
-                    # Handle Approval
-                    engine = manager.sessions[session_id]
-                    req_id = msg.get("request_id")
-                    if engine.authorizer and req_id:
-                        engine.authorizer.resolve_request(str(req_id), msg)
-                    continue
+                if isinstance(msg, dict):
+                    if msg.get("type") == "approval_response":
+                        # Handle Approval
+                        engine = manager.sessions[session_id]
+                        req_id = msg.get("request_id")
+                        if engine.authorizer and req_id:
+                            engine.authorizer.resolve_request(str(req_id), msg)
+                        continue
+                    elif msg.get("type") == "command":
+                        # Handle /slash commands from client
+                        cmd = msg.get("content")
+                        engine = manager.sessions[session_id]
+                        if cmd == "/reset":
+                            if engine.history:
+                                engine.history = [engine.history[0]]
+                            # Broadcast confirmation
+                            # We don't have a generic "System Message" event type in schema yet?
+                            # Let's use ERROR type for visibility or create SYSTEM type. 
+                            # We have EventType.SYSTEM defined in schemas.py!
+                            await manager.broadcast(session_id, AgentEvent(type=EventType.SYSTEM, content="History reset.").to_json())
+                        continue
             except json.JSONDecodeError:
                 pass # Treat as raw chat message
 
@@ -274,7 +272,9 @@ async def process_chat_message(session_id: str, user_input: str, user_name: str 
             async for event in engine.stream(user_input, user_name=user_name):
                 await manager.broadcast(session_id, event.to_json())
             
-            await manager._save_session_to_disk(session_id)
+            # Save State
+            await manager.session_manager.save_session(session_id, engine.profile.name, engine.history)
+            
         except Exception as e:
             print(f"Error in chat processing: {e}")
             error_event = AgentEvent(type=EventType.ERROR, content=str(e))
