@@ -4,7 +4,7 @@ import json
 import httpx
 import websockets
 from subprocess import Popen, DEVNULL
-from prompt_toolkit import PromptSession
+from prompt_toolkit import PromptSession, print_formatted_text
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.completion import WordCompleter
@@ -50,8 +50,8 @@ async def ws_listener(ws, profile_config, console: Console):
             metadata = data.get("metadata", {})
             
             if event_type == EventType.TOKEN:
-                # Use native print for streaming to avoid Rich artifacts
-                print(content, end="", flush=True)
+                # Use prompt_toolkit's print to play nice with the loop
+                print_formatted_text(content, end="", flush=True)
                 current_line_length += len(content)
             
             else:
@@ -61,7 +61,7 @@ async def ws_listener(ws, profile_config, console: Console):
                 if event_type == EventType.TOOL_START:
                     # If we were streaming text, we might need a newline?
                     if current_line_length > 0:
-                        print() # Native print newline
+                        print_formatted_text("")
                         current_line_length = 0
                         
                     input_args = metadata.get("input", {})
@@ -78,28 +78,28 @@ async def ws_listener(ws, profile_config, console: Console):
                     console.print(f"[grey50]{content}[/grey50]")
                     
                 elif event_type == EventType.ERROR:
-                    print()
+                    print_formatted_text("")
                     console.print(f"[red]Error: {content}[/red]")
                     current_line_length = 0
                     
                 elif event_type == EventType.SYSTEM:
-                    print()
+                    print_formatted_text("")
                     console.print(f"[green]System: {content}[/green]")
                     current_line_length = 0
                     
                 elif event_type == EventType.HISTORY_CONTENT:
                     # Render history statically (Markdown is fine here)
                     console.print(Markdown(content))
-                    print() # Spacing
+                    print_formatted_text("") 
                     
                 elif event_type == EventType.FINISH:
                     # End of turn
-                    print() 
+                    print_formatted_text("") 
                     current_line_length = 0
                     
                 elif event_type == EventType.APPROVAL_REQUEST:
                     if current_line_length > 0:
-                        print()
+                        print_formatted_text("")
                         current_line_length = 0
                         
                     tool = metadata.get("tool")
@@ -159,7 +159,7 @@ async def run_cli(args):
     try:
         async with websockets.connect(ws_url) as ws:
             # Instantiate Console here
-            console = Console()
+            console = Console(force_terminal=True)
             console.print("[green]Connected to Aigent Server.[/green]")
             
             # Start Listener
