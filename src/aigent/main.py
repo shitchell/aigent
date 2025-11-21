@@ -65,7 +65,10 @@ def entry_point() -> None:
         print(f"Starting chat with profile: {args.profile}")
         asyncio.run(run_cli(args))
     elif args.command == "kill-server":
-        if kill_server_process():
+        # Use defaults from config if not specified? 
+        # kill-server doesn't have args for host/port in parser yet.
+        # We should probably assume config defaults.
+        if kill_server_process(host=config.server.host, port=config.server.port):
             print("Server terminated.")
         else:
             print("No server found or failed to kill.")

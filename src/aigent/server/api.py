@@ -197,11 +197,13 @@ async def get_config():
 
 @app.get("/api/stats")
 async def get_stats():
+    import os
     total = sum(len(conns) for conns in manager.active_connections.values())
     return {
         "active_connections": total,
         "sessions": list(manager.active_connections.keys()),
-        "shutdown_scheduled": manager.shutdown_task is not None
+        "shutdown_scheduled": manager.shutdown_task is not None,
+        "pid": os.getpid()
     }
 
 @app.websocket("/ws/chat/{session_id}")
@@ -299,14 +301,6 @@ async def run_server(args) -> None:
     Args:
         args: Parsed command line arguments (host, port, yolo).
     """
-    import os
-    pid_file = Path.home() / ".aigent" / "server.pid"
-    try:
-        pid_file.parent.mkdir(parents=True, exist_ok=True)
-        pid_file.write_text(str(os.getpid()))
-    except Exception as e:
-        print(f"Warning: Could not write PID file: {e}")
-
     manager.yolo_mode = args.yolo
     if args.yolo:
         print("\033[91mWARNING: Server running in YOLO Mode. All permission checks are DISABLED.\033[0m")
@@ -328,12 +322,4 @@ async def run_server(args) -> None:
         
     config = uvicorn.Config(app, host=args.host, port=args.port, log_level="info")
     server = uvicorn.Server(config)
-    
-    try:
-        await server.serve()
-    finally:
-        if pid_file.exists():
-            try:
-                pid_file.unlink()
-            except Exception:
-                pass
+    await server.serve()

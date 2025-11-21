@@ -134,7 +134,7 @@ async def run_cli(args):
     # 1. Auto-Discovery / Start Server
     if hasattr(args, "replace") and args.replace:
         console.print("[yellow]Replacing existing server...[/yellow]")
-        kill_server_process()
+        kill_server_process(host=host, port=port)
         await asyncio.sleep(1)
 
     if not await check_server(base_url):
