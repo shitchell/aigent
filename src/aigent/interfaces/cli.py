@@ -12,6 +12,7 @@ from rich.live import Live
 from aigent.core.profiles import ProfileManager
 from aigent.core.engine import AgentEngine
 from aigent.core.schemas import EventType
+from aigent.interfaces.commands import REGISTRY, get_command_names, handle_command, CommandContext
 
 console = Console()
 
@@ -37,12 +38,12 @@ async def run_cli(args):
         return
 
     # 3. REPL Loop
-    slash_commands = ['/clear', '/reset', '/help', '/exit', '/quit']
-    slash_completer = WordCompleter(slash_commands, ignore_case=True)
-    
+    slash_completer = WordCompleter(get_command_names(), ignore_case=True)
     session = PromptSession(completer=slash_completer)
     
-    print(HTML("<b><green>Ready! Type 'exit' to quit.</green></b>"))
+    print(HTML("<b><green>Ready! Type '/help' for commands.</green></b>"))
+
+    cmd_context = CommandContext(console=console, engine=engine)
 
     while True:
         with patch_stdout():
@@ -51,25 +52,19 @@ async def run_cli(args):
             except (EOFError, KeyboardInterrupt):
                 break
             
-            # --- Slash Commands ---
-            cmd = user_input.strip().lower()
-            if cmd in ["exit", "quit"]:
-                break
-            if cmd == "/clear":
-                console.clear()
-                continue
-            if cmd == "/reset":
-                # Keep only system prompt (index 0)
-                if engine.history:
-                    engine.history = [engine.history[0]]
-                print(HTML("<green>History cleared.</green>"))
-                continue
-            if cmd == "/help":
-                print(HTML("<b>Commands:</b> /clear, /reset, /exit"))
-                continue
-
             if not user_input.strip():
                 continue
+
+            # --- Slash Commands ---
+            if user_input.strip().startswith("/"):
+                executed = await handle_command(user_input, cmd_context)
+                if executed:
+                    if cmd_context.should_exit:
+                        break
+                    continue
+                else:
+                    print(HTML("<red>Unknown command. Type /help.</red>"))
+                    continue
 
             # Process input
             try:
