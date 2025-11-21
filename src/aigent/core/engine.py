@@ -77,9 +77,33 @@ class AgentEngine:
         
         self.authorizer = Authorizer(schema, self._emit_event)
 
-        # 1. Load Static Context (System Prompt)
-        # Standard locations
-        system_context = await self.memory_loader.load_context()
+        # 1. Load Base Context (System Prompt)
+        import datetime
+        import platform
+        import os
+        from aigent.core.prompts import PRESETS
+        
+        base_template = PRESETS.get(self.profile.base_prompt, PRESETS["standard"])
+        
+        # Variable Expansion
+        variables = {
+            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "platform": platform.system(),
+            "cwd": os.getcwd(),
+            "user": self.profile.name
+        }
+        
+        try:
+            system_context = base_template.format(**variables)
+        except Exception:
+            # Fallback if formatting fails (e.g. user provided broken template)
+            system_context = base_template
+
+        # Load Static Context from Files (Standard locations)
+        # This appends to the base prompt
+        file_context = await self.memory_loader.load_context()
+        if file_context:
+             system_context += "\n" + file_context
         
         # Profile-specific files (Absolute paths resolved by ProfileManager)
         if self.profile.system_prompt_files:
@@ -202,7 +226,14 @@ class AgentEngine:
             agent_executor = AgentExecutor(agent=agent, tools=self.tools, verbose=False)
 
             system_msg_content = self.history[0].content if self.history else ""
-            chat_history_safe = self.history[1:-1]
+            
+            # History Slicing (Compactification)
+            # Get all messages between System (0) and Latest User (last)
+            intermediate_history = self.history[1:-1]
+            
+            # Slice to keep only the last N messages
+            max_msgs = getattr(self.profile, "max_messages", 50)
+            chat_history_safe = intermediate_history[-max_msgs:] if max_msgs > 0 else intermediate_history
 
             final_text = ""
             tool_buffer = {}

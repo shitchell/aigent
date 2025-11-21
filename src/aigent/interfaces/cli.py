@@ -4,9 +4,15 @@ from prompt_toolkit import PromptSession, print_formatted_text as print
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.formatted_text import HTML
 
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.live import Live
+
 from aigent.core.profiles import ProfileManager
 from aigent.core.engine import AgentEngine
 from aigent.core.schemas import EventType
+
+console = Console()
 
 async def run_cli(args):
     # 1. Load Profile
@@ -40,96 +46,112 @@ async def run_cli(args):
                 user_input = await session.prompt_async(HTML("<b>> </b>"))
             except (EOFError, KeyboardInterrupt):
                 break
-
-            if user_input.strip().lower() in ["exit", "quit"]:
-                break
             
+            # --- Slash Commands ---
+            cmd = user_input.strip().lower()
+            if cmd in ["exit", "quit"]:
+                break
+            if cmd == "/clear":
+                console.clear()
+                continue
+            if cmd == "/reset":
+                # Keep only system prompt (index 0)
+                if engine.history:
+                    engine.history = [engine.history[0]]
+                print(HTML("<green>History cleared.</green>"))
+                continue
+            if cmd == "/help":
+                print(HTML("<b>Commands:</b> /clear, /reset, /exit"))
+                continue
+
             if not user_input.strip():
                 continue
 
             # Process input
             try:
-                print(HTML(f"<skyblue>Thinking...</skyblue>"))
+                # print(HTML(f"<skyblue>Thinking...</skyblue>"))
                 
-                # We track if we are currently printing a token stream to handle newlines
-                streaming_text = False
+                # Markdown Streaming Buffer
+                current_text = ""
+                live_display = None
                 
                 async for event in engine.stream(user_input):
                     
                     if event.type == EventType.TOKEN:
-                        sys.stdout.write(event.content)
-                        sys.stdout.flush()
-                        streaming_text = True
+                        current_text += event.content
                         
-                    elif event.type == EventType.TOOL_START:
-                        if streaming_text:
-                            sys.stdout.write("\n")
-                            streaming_text = False
+                        # Start Live display if not active
+                        if live_display is None:
+                            live_display = Live(Markdown(current_text), console=console, refresh_per_second=10)
+                            live_display.start()
+                        else:
+                            live_display.update(Markdown(current_text))
+                        
+                    else:
+                        # Non-token event: Stop live display if running
+                        if live_display:
+                            live_display.stop()
+                            live_display = None
+                            current_text = "" # Reset buffer for next chunk? 
+                            # Ideally we shouldn't reset if we want to keep previous text visible?
+                            # live.stop() leaves the content on screen. So we are good.
+                        
+                        if event.type == EventType.TOOL_START:
+                            # Format Input
+                            input_args = event.metadata.get("input", {})
+                            formatted_args = ", ".join([f"{k}={repr(v)}" for k, v in input_args.items()])
                             
-                        # Format Input
-                        input_args = event.metadata.get("input", {})
-                        formatted_args = ", ".join([f"{k}={repr(v)}" for k, v in input_args.items()])
-                        
-                        # Truncate
-                        limit = profile_manager.config.tool_call_preview_length
-                        if len(formatted_args) > limit:
-                            formatted_args = formatted_args[:limit] + "..."
+                            # Truncate
+                            limit = profile_manager.config.tool_call_preview_length
+                            if len(formatted_args) > limit:
+                                formatted_args = formatted_args[:limit] + "..."
+                                
+                            tool_name = event.content.replace("Calling tool: ", "")
+                            print(HTML(f"<yellow>🛠  {tool_name}({formatted_args})</yellow>"))
                             
-                        tool_name = event.content.replace("Calling tool: ", "")
-                        print(HTML(f"<yellow>🛠  {tool_name}({formatted_args})</yellow>"))
-                        
-                    elif event.type == EventType.TOOL_END:
-                        # Format output
-                        content = event.content
-                        # Truncate total length if massive
-                        if len(content) > 500:
-                            content = content[:500] + "..."
-                        print(HTML(f"<grey>{content}</grey>"))
-                        
-                    elif event.type == EventType.ERROR:
-                        print(HTML(f"<red>Error: {event.content}</red>"))
+                        elif event.type == EventType.TOOL_END:
+                            # Format output
+                            content = event.content
+                            # Truncate total length if massive
+                            if len(content) > 500:
+                                content = content[:500] + "..."
+                            print(HTML(f"<grey>{content}</grey>"))
+                            
+                        elif event.type == EventType.ERROR:
+                            print(HTML(f"<red>Error: {event.content}</red>"))
 
-                    elif event.type == EventType.APPROVAL_REQUEST:
-                        if streaming_text:
-                            sys.stdout.write("\n")
-                            streaming_text = False
+                        elif event.type == EventType.APPROVAL_REQUEST:
+                            tool = event.metadata.get("tool")
+                            args = event.metadata.get("input")
+                            req_id = event.metadata.get("request_id")
                             
-                        tool = event.metadata.get("tool")
-                        args = event.metadata.get("input")
-                        req_id = event.metadata.get("request_id")
-                        
-                        print(HTML(f"<orange>✋ Permission Request: {tool}</orange>"))
-                        print(f"   Args: {args}")
-                        
-                        # Prompt user
-                        # We need to break out of patch_stdout to prompt properly?
-                        # Or use session inside? 
-                        # Since we are inside patch_stdout context, print works.
-                        # But prompt_async?
-                        
-                        decision = "deny"
-                        while True:
-                            ans = await session.prompt_async(HTML("   <orange>Allow? [y/n/a(lways tool)/s(smart)]: </orange>"))
-                            ans = ans.lower().strip()
-                            if ans in ['y', 'yes']:
-                                decision = "allow"
-                                break
-                            elif ans in ['n', 'no']:
-                                decision = "deny"
-                                break
-                            elif ans in ['a', 'always']:
-                                decision = "always_tool"
-                                break
-                            elif ans in ['s', 'smart']:
-                                decision = "always_smart"
-                                break
-                        
-                        # Send decision back to engine
-                        if req_id:
-                            engine.authorizer.resolve_request(str(req_id), {"decision": decision})
+                            print(HTML(f"<orange>✋ Permission Request: {tool}</orange>"))
+                            print(f"   Args: {args}")
+                            
+                            decision = "deny"
+                            while True:
+                                ans = await session.prompt_async(HTML("   <orange>Allow? [y/n/a(lways tool)/s(smart)]: </orange>"))
+                                ans = ans.lower().strip()
+                                if ans in ['y', 'yes']:
+                                    decision = "allow"
+                                    break
+                                elif ans in ['n', 'no']:
+                                    decision = "deny"
+                                    break
+                                elif ans in ['a', 'always']:
+                                    decision = "always_tool"
+                                    break
+                                elif ans in ['s', 'smart']:
+                                    decision = "always_smart"
+                                    break
+                            
+                            # Send decision back to engine
+                            if req_id:
+                                engine.authorizer.resolve_request(str(req_id), {"decision": decision})
 
-                if streaming_text:
-                    sys.stdout.write("\n")
+                # Clean up at end of stream
+                if live_display:
+                    live_display.stop()
                     
             except Exception as e:
                 print(f"Error during execution: {e}")

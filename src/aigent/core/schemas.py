@@ -53,6 +53,13 @@ class UserProfile(BaseModel):
     system_prompt: Optional[str] = None
     system_prompt_path: Optional[str] = None # Deprecated, maps to system_prompt_files
     system_prompt_files: List[str] = Field(default_factory=list)
+    
+    # Prompt Composition
+    base_prompt: str = "standard" # Presets: standard, minimal, none
+    
+    # Context Management
+    max_messages: int = 50 # Rolling window size
+    
     context_files: List[str] = Field(default_factory=list)
     
     model_provider: ModelProvider = ModelProvider.OPENAI
