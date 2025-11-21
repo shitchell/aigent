@@ -87,6 +87,10 @@ async def ws_listener(ws, profile_config):
                 elif event_type == EventType.SYSTEM:
                     console.print(f"[green]System: {content}[/green]")
                     
+                elif event_type == EventType.HISTORY_CONTENT:
+                    # Render history statically, no typing effect
+                    console.print(Markdown(content))
+                    
                 elif event_type == EventType.APPROVAL_REQUEST:
                     tool = metadata.get("tool")
                     args = metadata.get("input")

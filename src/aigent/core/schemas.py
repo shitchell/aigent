@@ -14,6 +14,8 @@ class EventType(StrEnum):
     # New events for authorization
     APPROVAL_REQUEST = "approval_request"
     APPROVAL_RESPONSE = "approval_response"
+    # For history replay
+    HISTORY_CONTENT = "history_content"
 
 class PermissionPolicy(StrEnum):
     ALLOW = "allow"

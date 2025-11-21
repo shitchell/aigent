@@ -148,7 +148,7 @@ class ConnectionManager:
             elif isinstance(msg, AIMessage):
                 # 1. Replay Content (Thought/Answer)
                 if msg.content:
-                    event = AgentEvent(type=EventType.TOKEN, content=str(msg.content))
+                    event = AgentEvent(type=EventType.HISTORY_CONTENT, content=str(msg.content))
                     await websocket.send_text(event.to_json())
                 
                 # 2. Replay Tool Calls
