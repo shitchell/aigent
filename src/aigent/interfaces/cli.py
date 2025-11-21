@@ -16,6 +16,7 @@ from rich.live import Live
 from aigent.core.profiles import ProfileManager
 from aigent.core.schemas import EventType
 from aigent.interfaces.commands import get_command_names, handle_command, CommandContext
+from aigent.server.lifecycle import kill_server_process
 
 console = Console()
 
@@ -124,6 +125,11 @@ async def run_cli(args):
     ws_url = f"ws://{host}:{port}/ws/chat/{session_id}?profile={args.profile}&user_id=cli-user"
 
     # 1. Auto-Discovery / Start Server
+    if hasattr(args, "replace") and args.replace:
+        console.print("[yellow]Replacing existing server...[/yellow]")
+        kill_server_process()
+        await asyncio.sleep(1)
+
     if not await check_server(base_url):
         start_server(host, port, args.yolo)
         # Wait loop

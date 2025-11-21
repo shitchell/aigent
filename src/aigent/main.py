@@ -5,6 +5,7 @@ from pathlib import Path
 
 from aigent.interfaces.cli import run_cli
 from aigent.server.api import run_server
+from aigent.server.lifecycle import kill_server_process
 from aigent.core.profiles import ProfileManager, set_config_path
 
 def entry_point() -> None:
@@ -40,12 +41,16 @@ def entry_point() -> None:
     chat_parser = subparsers.add_parser("chat", help="Start the CLI chat session")
     chat_parser.add_argument("--profile", type=str, default=config.default_profile, help="Agent profile to load")
     chat_parser.add_argument("--yolo", action="store_true", help="Disable all permission checks (Danger!)")
+    chat_parser.add_argument("--replace", action="store_true", help="Kill existing server and start a new one")
 
     # Serve Command (Web Daemon)
     serve_parser = subparsers.add_parser("serve", help="Start the API/Web daemon")
     serve_parser.add_argument("--host", type=str, default=config.server.host)
     serve_parser.add_argument("--port", type=int, default=config.server.port)
     serve_parser.add_argument("--yolo", action="store_true", help="Disable all permission checks server-wide (Danger!)")
+
+    # Kill Server Command
+    subparsers.add_parser("kill-server", help="Terminate the running Aigent server")
 
     args = parser.parse_args()
 
@@ -58,6 +63,11 @@ def entry_point() -> None:
     elif args.command == "chat":
         print(f"Starting chat with profile: {args.profile}")
         asyncio.run(run_cli(args))
+    elif args.command == "kill-server":
+        if kill_server_process():
+            print("Server terminated.")
+        else:
+            print("No server found or failed to kill.")
     else:
         parser.print_help()
 
