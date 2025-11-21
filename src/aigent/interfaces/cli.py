@@ -18,8 +18,6 @@ from aigent.core.schemas import EventType
 from aigent.interfaces.commands import get_command_names, handle_command, CommandContext
 from aigent.server.lifecycle import kill_server_process
 
-console = Console()
-
 # Shared State
 CLIENT_STATE = {
     "pending_approval_id": None,
@@ -35,13 +33,13 @@ async def check_server(url: str) -> bool:
             return False
 
 def start_server(host: str, port: int, yolo: bool):
-    console.print("[yellow]Starting background server...[/yellow]")
+    print("Starting background server...")
     cmd = [sys.executable, "-m", "aigent.main", "serve", "--host", host, "--port", str(port)]
     if yolo:
         cmd.append("--yolo")
     Popen(cmd, stdout=DEVNULL, stderr=DEVNULL, start_new_session=True)
 
-async def ws_listener(ws, profile_config):
+async def ws_listener(ws, profile_config, console: Console):
     live_display = None
     current_text = ""
     
@@ -55,7 +53,10 @@ async def ws_listener(ws, profile_config):
             if event_type == EventType.TOKEN:
                 current_text += content
                 if live_display is None:
-                    live_display = Live(Markdown(current_text), console=console, refresh_per_second=10, transient=True)
+                    # transient=False is default. We rely on Live to clear itself or stay?
+                    # If we want it to stay, we just stop() it.
+                    # auto_refresh=True is default.
+                    live_display = Live(Markdown(current_text), console=console, refresh_per_second=10)
                     live_display.start()
                 else:
                     live_display.update(Markdown(current_text))
@@ -65,9 +66,9 @@ async def ws_listener(ws, profile_config):
                 if live_display:
                     live_display.stop()
                     live_display = None
-                    # Print final result permanently
-                    if current_text:
-                        console.print(Markdown(current_text))
+                    # We don't need to reprint if Live left it there (transient=False).
+                    # But Live might leave it in a weird state if prompt_toolkit redrew prompt?
+                    # Let's rely on Live staying put.
                     current_text = ""
 
                 if event_type == EventType.TOOL_START:
@@ -151,10 +152,12 @@ async def run_cli(args):
     # 2. Connect & Loop
     try:
         async with websockets.connect(ws_url) as ws:
+            # Instantiate Console here
+            console = Console()
             console.print("[green]Connected to Aigent Server.[/green]")
             
             # Start Listener
-            listener = asyncio.create_task(ws_listener(ws, config))
+            listener = asyncio.create_task(ws_listener(ws, config, console))
             
             # Setup Prompt
             slash_completer = WordCompleter(get_command_names(), ignore_case=True)
