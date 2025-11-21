@@ -11,7 +11,7 @@ from prompt_toolkit.completion import WordCompleter
 
 from rich.console import Console
 from rich.markdown import Markdown
-from rich.live import Live
+from io import StringIO
 
 from aigent.core.profiles import ProfileManager
 from aigent.core.schemas import EventType
@@ -39,108 +39,116 @@ def start_server(host: str, port: int, yolo: bool):
         cmd.append("--yolo")
     Popen(cmd, stdout=DEVNULL, stderr=DEVNULL, start_new_session=True)
 
-async def ws_listener(ws, profile_config, console: Console):
+def render_markdown_to_text(content: str) -> str:
+    """Convert markdown to plain text using Rich's renderer."""
+    console = Console(file=StringIO(), force_terminal=False, width=80)
+    console.print(Markdown(content))
+    return console.file.getvalue()
+
+async def ws_listener(ws, profile_config):
+    """
+    WebSocket listener that receives events and prints them.
+    Uses prompt_toolkit's print_formatted_text for all output to coordinate with the prompt.
+    """
     current_line_length = 0
-    
+
     try:
         async for message in ws:
             data = json.loads(message)
             event_type = data.get("type")
             content = data.get("content", "")
             metadata = data.get("metadata", {})
-            
+
             if event_type == EventType.TOKEN:
-                # Use prompt_toolkit's print to play nice with the loop
+                # Stream tokens without newline
                 print_formatted_text(content, end="", flush=True)
                 current_line_length += len(content)
-            
+
             else:
                 # Non-token event: ensure we start on a new line if we were streaming
-                pass
-
                 if event_type == EventType.TOOL_START:
-                    # If we were streaming text, we might need a newline?
+                    # If we were streaming text, add a newline
                     if current_line_length > 0:
                         print_formatted_text("")
                         current_line_length = 0
-                        
+
                     input_args = metadata.get("input", {})
                     formatted_args = ", ".join([f"{k}={repr(v)}" for k, v in input_args.items()])
                     limit = profile_config.tool_call_preview_length
                     if len(formatted_args) > limit:
                         formatted_args = formatted_args[:limit] + "..."
                     tool_name = content.replace("Calling tool: ", "")
-                    console.print(f"[yellow]🛠  {tool_name}({formatted_args})[/yellow]")
-                    
+                    print_formatted_text(HTML(f"<yellow>🛠  {tool_name}({formatted_args})</yellow>"))
+
                 elif event_type == EventType.TOOL_END:
                     if len(content) > 500:
                         content = content[:500] + "..."
-                    console.print(f"[grey50]{content}[/grey50]")
-                    
+                    print_formatted_text(HTML(f"<grey>{content}</grey>"))
+
                 elif event_type == EventType.ERROR:
-                    print_formatted_text("")
-                    console.print(f"[red]Error: {content}[/red]")
-                    current_line_length = 0
-                    
+                    if current_line_length > 0:
+                        print_formatted_text("")
+                        current_line_length = 0
+                    print_formatted_text(HTML(f"<red>Error: {content}</red>"))
+
                 elif event_type == EventType.SYSTEM:
-                    print_formatted_text("")
-                    console.print(f"[green]System: {content}[/green]")
-                    current_line_length = 0
-                    
+                    if current_line_length > 0:
+                        print_formatted_text("")
+                        current_line_length = 0
+                    print_formatted_text(HTML(f"<green>System: {content}</green>"))
+
                 elif event_type == EventType.HISTORY_CONTENT:
-                    # Render history statically (Markdown is fine here)
-                    console.print(Markdown(content))
-                    print_formatted_text("") 
-                    
-                elif event_type == EventType.FINISH:
-                    # End of turn
-                    print_formatted_text("") 
+                    # Render markdown to plain text
+                    rendered = render_markdown_to_text(content)
+                    print_formatted_text(rendered)
                     current_line_length = 0
-                    
+
+                elif event_type == EventType.FINISH:
+                    # End of turn - ensure we have a newline
+                    if current_line_length > 0:
+                        print_formatted_text("")
+                        current_line_length = 0
+
                 elif event_type == EventType.APPROVAL_REQUEST:
                     if current_line_length > 0:
                         print_formatted_text("")
                         current_line_length = 0
-                        
+
                     tool = metadata.get("tool")
                     args = metadata.get("input")
                     req_id = metadata.get("request_id")
-                    
+
                     CLIENT_STATE["pending_approval_id"] = req_id
-                    
-                    console.print(f"[orange1]✋ Permission Request: {tool}[/orange1]")
-                    console.print(f"   Args: {args}")
-                    console.print("[bold orange1]   Allow? [y/n/a(lways tool)/s(smart)][/bold orange1]")
+
+                    print_formatted_text(HTML(f"<orange>✋ Permission Request: {tool}</orange>"))
+                    print_formatted_text(f"   Args: {args}")
+                    print_formatted_text(HTML("<b><orange>   Allow? [y/n/a(lways tool)/s(smart)]</orange></b>"))
 
     except websockets.ConnectionClosed:
-        console.print("[red]Connection to server lost.[/red]")
-        # We could try to reconnect or just exit
-        # For now, just exit prompt loop?
-        # sys.exit(0) is harsh if we are inside a task
+        print_formatted_text(HTML("<red>Connection to server lost.</red>"))
         pass
 
 async def run_cli(args):
     pm = ProfileManager()
     config = pm.config
-    
+
     host = config.server.host
     port = config.server.port
     base_url = f"http://{host}:{port}"
-    
+
     # Session ID Strategy
     import uuid
     if hasattr(args, "session") and args.session:
         session_id = args.session
     else:
         # Default to ephemeral/random session
-        # We prefix with 'cli-' just for clarity in logs/files
         session_id = f"cli-{uuid.uuid4().hex[:8]}"
-    
+
     ws_url = f"ws://{host}:{port}/ws/chat/{session_id}?profile={args.profile}&user_id=cli-user"
 
     # 1. Auto-Discovery / Start Server
     if hasattr(args, "replace") and args.replace:
-        console.print("[yellow]Replacing existing server...[/yellow]")
+        print(HTML("<yellow>Replacing existing server...</yellow>"))
         kill_server_process(host=host, port=port)
         await asyncio.sleep(1)
 
@@ -158,67 +166,67 @@ async def run_cli(args):
     # 2. Connect & Loop
     try:
         async with websockets.connect(ws_url) as ws:
-            # Instantiate Console here
-            console = Console(force_terminal=True)
-            console.print("[green]Connected to Aigent Server.[/green]")
-            
-            # Start Listener
-            listener = asyncio.create_task(ws_listener(ws, config, console))
-            
-            # Setup Prompt
-            slash_completer = WordCompleter(get_command_names(), ignore_case=True)
-            session = PromptSession(completer=slash_completer)
-            
-            cmd_context = CommandContext(console=console, websocket=ws)
+            # Use patch_stdout for the ENTIRE session to coordinate all output
+            with patch_stdout():
+                console = Console(force_terminal=True)
+                print_formatted_text(HTML("<green>Connected to Aigent Server.</green>"))
 
-            while True:
-                if listener.done():
-                    break
-                    
-                # Dynamic Prompt?
-                prompt_text = HTML("<b>> </b>")
-                if CLIENT_STATE["pending_approval_id"]:
-                    prompt_text = HTML("<b><orange>Decision > </orange></b>")
-                
-                with patch_stdout():
+                # Start Listener
+                listener = asyncio.create_task(ws_listener(ws, config))
+
+                # Setup Prompt
+                slash_completer = WordCompleter(get_command_names(), ignore_case=True)
+                session = PromptSession(completer=slash_completer)
+
+                cmd_context = CommandContext(console=console, websocket=ws)
+
+                while True:
+                    if listener.done():
+                        break
+
+                    # Dynamic Prompt
+                    prompt_text = HTML("<b>> </b>")
+                    if CLIENT_STATE["pending_approval_id"]:
+                        prompt_text = HTML("<b><orange>Decision > </orange></b>")
+
                     try:
                         user_input = await session.prompt_async(prompt_text)
                     except (EOFError, KeyboardInterrupt):
                         break
-                
-                if not user_input.strip():
-                    continue
 
-                # Handle Approval Response
-                if CLIENT_STATE["pending_approval_id"]:
-                    ans = user_input.lower().strip()
-                    decision = "deny"
-                    if ans in ['y', 'yes']: decision = "allow"
-                    elif ans in ['n', 'no']: decision = "deny"
-                    elif ans in ['a', 'always']: decision = "always_tool"
-                    elif ans in ['s', 'smart']: decision = "always_smart"
-                    
-                    msg = {
-                        "type": "approval_response", 
-                        "request_id": CLIENT_STATE["pending_approval_id"],
-                        "decision": decision
-                    }
-                    await ws.send(json.dumps(msg))
-                    CLIENT_STATE["pending_approval_id"] = None
-                    continue
-
-                # Handle Commands
-                if user_input.strip().startswith("/"):
-                    if await handle_command(user_input, cmd_context):
-                        if cmd_context.should_exit:
-                            break
+                    if not user_input.strip():
                         continue
 
-                # Send Chat Message
-                # We send raw text. The server treats it as user input.
-                await ws.send(user_input)
-                
-            listener.cancel()
-            
+                    # Handle Approval Response
+                    if CLIENT_STATE["pending_approval_id"]:
+                        ans = user_input.lower().strip()
+                        decision = "deny"
+                        if ans in ['y', 'yes']: decision = "allow"
+                        elif ans in ['n', 'no']: decision = "deny"
+                        elif ans in ['a', 'always']: decision = "always_tool"
+                        elif ans in ['s', 'smart']: decision = "always_smart"
+
+                        msg = {
+                            "type": "approval_response",
+                            "request_id": CLIENT_STATE["pending_approval_id"],
+                            "decision": decision
+                        }
+                        await ws.send(json.dumps(msg))
+                        CLIENT_STATE["pending_approval_id"] = None
+                        continue
+
+                    # Handle Commands
+                    if user_input.strip().startswith("/"):
+                        if await handle_command(user_input, cmd_context):
+                            if cmd_context.should_exit:
+                                break
+                            continue
+
+                    # Send Chat Message
+                    await ws.send(user_input)
+
+                listener.cancel()
+
     except Exception as e:
+        console = Console()
         console.print(f"[red]Error: {e}[/red]")
