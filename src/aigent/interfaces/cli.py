@@ -3,6 +3,7 @@ import sys
 from prompt_toolkit import PromptSession, print_formatted_text as print
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.completion import WordCompleter
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -36,7 +37,10 @@ async def run_cli(args):
         return
 
     # 3. REPL Loop
-    session = PromptSession()
+    slash_commands = ['/clear', '/reset', '/help', '/exit', '/quit']
+    slash_completer = WordCompleter(slash_commands, ignore_case=True)
+    
+    session = PromptSession(completer=slash_completer)
     
     print(HTML("<b><green>Ready! Type 'exit' to quit.</green></b>"))
 
