@@ -4,7 +4,7 @@ import json
 import httpx
 import websockets
 from subprocess import Popen, DEVNULL
-from prompt_toolkit import PromptSession, print_formatted_text
+from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.completion import WordCompleter
@@ -40,9 +40,25 @@ def start_server(host: str, port: int, yolo: bool):
 async def ws_listener(ws, profile_config):
     """
     WebSocket listener that receives events and prints them.
-    Uses prompt_toolkit's print_formatted_text for all output to coordinate with the prompt.
+    Buffers tokens to avoid excessive print_formatted_text calls.
+
+    Note: We buffer tokens because calling print_formatted_text() for each individual
+    token causes patch_stdout() to create excessive blank lines and cursor movements.
+    By batching tokens, we dramatically reduce terminal control sequences.
     """
-    current_line_length = 0
+    from prompt_toolkit import print_formatted_text
+    from prompt_toolkit.formatted_text import HTML
+
+    token_buffer = []
+    last_flush_time = asyncio.get_event_loop().time()
+    FLUSH_INTERVAL = 0.1  # Flush every 100ms
+
+    async def flush_tokens():
+        nonlocal token_buffer
+        if token_buffer:
+            # Print all buffered tokens at once
+            print_formatted_text(''.join(token_buffer), end='')
+            token_buffer = []
 
     try:
         async for message in ws:
@@ -52,18 +68,21 @@ async def ws_listener(ws, profile_config):
             metadata = data.get("metadata", {})
 
             if event_type == EventType.TOKEN:
-                # Stream tokens without newline
-                print_formatted_text(content, end="", flush=True)
-                current_line_length += len(content)
+                # Buffer tokens instead of printing immediately
+                token_buffer.append(content)
+
+                # Flush if enough time has passed or buffer is large
+                current_time = asyncio.get_event_loop().time()
+                if (current_time - last_flush_time > FLUSH_INTERVAL or
+                    len(''.join(token_buffer)) > 100):
+                    await flush_tokens()
+                    last_flush_time = current_time
 
             else:
-                # Non-token event: ensure we start on a new line if we were streaming
-                if event_type == EventType.TOOL_START:
-                    # If we were streaming text, add a newline
-                    if current_line_length > 0:
-                        print_formatted_text("")
-                        current_line_length = 0
+                # Flush any remaining tokens before handling other events
+                await flush_tokens()
 
+                if event_type == EventType.TOOL_START:
                     input_args = metadata.get("input", {})
                     formatted_args = ", ".join([f"{k}={repr(v)}" for k, v in input_args.items()])
                     limit = profile_config.tool_call_preview_length
@@ -75,38 +94,24 @@ async def ws_listener(ws, profile_config):
                 elif event_type == EventType.TOOL_END:
                     if len(content) > 500:
                         content = content[:500] + "..."
-                    print_formatted_text(HTML(f"<grey>{content}</grey>"))
+                    print_formatted_text(HTML(f"<grey>   {content}</grey>"))
 
                 elif event_type == EventType.ERROR:
-                    if current_line_length > 0:
-                        print_formatted_text("")
-                        current_line_length = 0
                     print_formatted_text(HTML(f"<red>Error: {content}</red>"))
 
                 elif event_type == EventType.SYSTEM:
-                    if current_line_length > 0:
-                        print_formatted_text("")
-                        current_line_length = 0
                     print_formatted_text(HTML(f"<green>System: {content}</green>"))
 
                 elif event_type == EventType.HISTORY_CONTENT:
                     # Just print the content as-is (it's already markdown text)
-                    if current_line_length > 0:
-                        print_formatted_text("")  # Newline if needed
-                        current_line_length = 0
                     print_formatted_text(content)
 
                 elif event_type == EventType.FINISH:
-                    # End of turn - ensure we have a newline
-                    if current_line_length > 0:
-                        print_formatted_text("")
-                        current_line_length = 0
+                    # End of turn - flush any remaining tokens and add newline
+                    await flush_tokens()
+                    print_formatted_text("")  # Newline for next prompt
 
                 elif event_type == EventType.APPROVAL_REQUEST:
-                    if current_line_length > 0:
-                        print_formatted_text("")
-                        current_line_length = 0
-
                     tool = metadata.get("tool")
                     args = metadata.get("input")
                     req_id = metadata.get("request_id")
@@ -118,6 +123,8 @@ async def ws_listener(ws, profile_config):
                     print_formatted_text(HTML("<b><orange>   Allow? [y/n/a(lways tool)/s(smart)]</orange></b>"))
 
     except websockets.ConnectionClosed:
+        # Flush any remaining tokens before disconnecting
+        await flush_tokens()
         print_formatted_text(HTML("<red>Connection to server lost.</red>"))
         pass
 
@@ -141,7 +148,7 @@ async def run_cli(args):
 
     # 1. Auto-Discovery / Start Server
     if hasattr(args, "replace") and args.replace:
-        print(HTML("<yellow>Replacing existing server...</yellow>"))
+        print("Replacing existing server...")
         kill_server_process(host=host, port=port)
         await asyncio.sleep(1)
 
@@ -161,6 +168,7 @@ async def run_cli(args):
         async with websockets.connect(ws_url) as ws:
             # Use patch_stdout for the ENTIRE session to coordinate all output
             with patch_stdout():
+                from prompt_toolkit import print_formatted_text
                 print_formatted_text(HTML("<green>Connected to Aigent Server.</green>"))
 
                 # Start Listener
@@ -220,5 +228,4 @@ async def run_cli(args):
                 listener.cancel()
 
     except Exception as e:
-        console = Console()
-        console.print(f"[red]Error: {e}[/red]")
+        print(f"Error: {e}")
