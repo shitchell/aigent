@@ -40,8 +40,7 @@ def start_server(host: str, port: int, yolo: bool):
     Popen(cmd, stdout=DEVNULL, stderr=DEVNULL, start_new_session=True)
 
 async def ws_listener(ws, profile_config, console: Console):
-    live_display = None
-    current_text = ""
+    current_line_length = 0
     
     try:
         async for message in ws:
@@ -51,27 +50,24 @@ async def ws_listener(ws, profile_config, console: Console):
             metadata = data.get("metadata", {})
             
             if event_type == EventType.TOKEN:
-                current_text += content
-                if live_display is None:
-                    # transient=False is default. We rely on Live to clear itself or stay?
-                    # If we want it to stay, we just stop() it.
-                    # auto_refresh=True is default.
-                    live_display = Live(Markdown(current_text), console=console, refresh_per_second=10)
-                    live_display.start()
-                else:
-                    live_display.update(Markdown(current_text))
+                # Plain text streaming - robust and artifact-free
+                console.print(content, end="")
+                current_line_length += len(content)
             
             else:
-                # Stop Live Display
-                if live_display:
-                    live_display.stop()
-                    live_display = None
-                    # We don't need to reprint if Live left it there (transient=False).
-                    # But Live might leave it in a weird state if prompt_toolkit redrew prompt?
-                    # Let's rely on Live staying put.
-                    current_text = ""
+                # Non-token event: ensure we start on a new line if we were streaming
+                # Actually, we assume the stream ended? 
+                # Usually FINISH follows tokens.
+                pass
 
                 if event_type == EventType.TOOL_START:
+                    # If we were streaming text, we might need a newline?
+                    # But usually tools happen before/after text.
+                    # Let's force a newline just in case
+                    if current_line_length > 0:
+                        console.print()
+                        current_line_length = 0
+                        
                     input_args = metadata.get("input", {})
                     formatted_args = ", ".join([f"{k}={repr(v)}" for k, v in input_args.items()])
                     limit = profile_config.tool_call_preview_length
@@ -86,16 +82,28 @@ async def ws_listener(ws, profile_config, console: Console):
                     console.print(f"[grey50]{content}[/grey50]")
                     
                 elif event_type == EventType.ERROR:
-                    console.print(f"[red]Error: {content}[/red]")
+                    console.print(f"\n[red]Error: {content}[/red]")
+                    current_line_length = 0
                     
                 elif event_type == EventType.SYSTEM:
-                    console.print(f"[green]System: {content}[/green]")
+                    console.print(f"\n[green]System: {content}[/green]")
+                    current_line_length = 0
                     
                 elif event_type == EventType.HISTORY_CONTENT:
-                    # Render history statically, no typing effect
+                    # Render history statically (Markdown is fine here)
                     console.print(Markdown(content))
+                    console.print() # Spacing
+                    
+                elif event_type == EventType.FINISH:
+                    # End of turn
+                    console.print() 
+                    current_line_length = 0
                     
                 elif event_type == EventType.APPROVAL_REQUEST:
+                    if current_line_length > 0:
+                        console.print()
+                        current_line_length = 0
+                        
                     tool = metadata.get("tool")
                     args = metadata.get("input")
                     req_id = metadata.get("request_id")
