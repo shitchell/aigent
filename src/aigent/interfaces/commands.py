@@ -1,13 +1,10 @@
 from typing import Protocol, Dict, List, Type, Any
 from dataclasses import dataclass
-from rich.console import Console
-from rich.markup import escape
 import json
 
 @dataclass
 class CommandContext:
-    console: Console
-    websocket: Any 
+    websocket: Any
     # Return True to stop the CLI loop (exit)
     should_exit: bool = False
 
@@ -41,9 +38,10 @@ class BaseCommand:
 class ClearCommand(BaseCommand):
     name = "/clear"
     description = "Clear the terminal screen"
-    
+
     async def execute(self, context: CommandContext) -> None:
-        context.console.clear()
+        import os
+        os.system('clear' if os.name == 'posix' else 'cls')
 
 class ResetCommand(BaseCommand):
     name = "/reset"
@@ -71,11 +69,11 @@ class QuitCommand(BaseCommand):
 class HelpCommand(BaseCommand):
     name = "/help"
     description = "Show available commands"
-    
+
     async def execute(self, context: CommandContext) -> None:
-        context.console.print("[bold]Available Commands:[/bold]")
+        print("Available Commands:")
         for cmd in REGISTRY.values():
-            context.console.print(f"  [yellow]{cmd.name}[/yellow]: {cmd.description}")
+            print(f"  {cmd.name}: {cmd.description}")
 
 def get_command_names() -> List[str]:
     return list(REGISTRY.keys())

@@ -9,9 +9,6 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.completion import WordCompleter
 
-from rich.console import Console
-from rich.markdown import Markdown
-from io import StringIO
 
 from aigent.core.profiles import ProfileManager
 from aigent.core.schemas import EventType
@@ -39,11 +36,6 @@ def start_server(host: str, port: int, yolo: bool):
         cmd.append("--yolo")
     Popen(cmd, stdout=DEVNULL, stderr=DEVNULL, start_new_session=True)
 
-def render_markdown_to_text(content: str) -> str:
-    """Convert markdown to plain text using Rich's renderer."""
-    console = Console(file=StringIO(), force_terminal=False, width=80)
-    console.print(Markdown(content))
-    return console.file.getvalue()
 
 async def ws_listener(ws, profile_config):
     """
@@ -98,10 +90,11 @@ async def ws_listener(ws, profile_config):
                     print_formatted_text(HTML(f"<green>System: {content}</green>"))
 
                 elif event_type == EventType.HISTORY_CONTENT:
-                    # Render markdown to plain text
-                    rendered = render_markdown_to_text(content)
-                    print_formatted_text(rendered)
-                    current_line_length = 0
+                    # Just print the content as-is (it's already markdown text)
+                    if current_line_length > 0:
+                        print_formatted_text("")  # Newline if needed
+                        current_line_length = 0
+                    print_formatted_text(content)
 
                 elif event_type == EventType.FINISH:
                     # End of turn - ensure we have a newline
@@ -168,7 +161,6 @@ async def run_cli(args):
         async with websockets.connect(ws_url) as ws:
             # Use patch_stdout for the ENTIRE session to coordinate all output
             with patch_stdout():
-                console = Console(force_terminal=True)
                 print_formatted_text(HTML("<green>Connected to Aigent Server.</green>"))
 
                 # Start Listener
@@ -178,7 +170,7 @@ async def run_cli(args):
                 slash_completer = WordCompleter(get_command_names(), ignore_case=True)
                 session = PromptSession(completer=slash_completer)
 
-                cmd_context = CommandContext(console=console, websocket=ws)
+                cmd_context = CommandContext(websocket=ws)
 
                 while True:
                     if listener.done():
