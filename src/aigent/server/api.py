@@ -107,11 +107,14 @@ class ConnectionManager:
             if websocket in self.active_connections[session_id]:
                 self.active_connections[session_id].remove(websocket)
             if not self.active_connections[session_id]:
-                # Last connection for this session closed
+                # Cleanup empty session list?
+                del self.active_connections[session_id]
                 pass
                 
         # Check GLOBAL connections
         total_connections = sum(len(conns) for conns in self.active_connections.values())
+        print(f"Connection closed. Total active: {total_connections}")
+        
         if total_connections == 0:
             self._start_shutdown_timer()
 
@@ -191,6 +194,15 @@ async def get_config():
     if not pm.loaded:
         pm.load_profiles()
     return pm.config.dict()
+
+@app.get("/api/stats")
+async def get_stats():
+    total = sum(len(conns) for conns in manager.active_connections.values())
+    return {
+        "active_connections": total,
+        "sessions": list(manager.active_connections.keys()),
+        "shutdown_scheduled": manager.shutdown_task is not None
+    }
 
 @app.websocket("/ws/chat/{session_id}")
 async def websocket_endpoint(
