@@ -18,14 +18,34 @@ class SlashCommand(Protocol):
     async def execute(self, context: CommandContext) -> None:
         ...
 
-class ClearCommand:
+# Registry to hold instantiated commands
+REGISTRY: Dict[str, SlashCommand] = {}
+
+class BaseCommand:
+    """
+    Base class for all slash commands.
+    Automatically registers subclasses with a 'name' attribute to the REGISTRY.
+    """
+    name: str
+    description: str
+
+    async def execute(self, context: CommandContext) -> None:
+        raise NotImplementedError("Commands must implement execute()")
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Register the command if it has a concrete name
+        if hasattr(cls, "name") and cls.name:
+            REGISTRY[cls.name] = cls()
+
+class ClearCommand(BaseCommand):
     name = "/clear"
     description = "Clear the terminal screen"
     
     async def execute(self, context: CommandContext) -> None:
         context.console.clear()
 
-class ResetCommand:
+class ResetCommand(BaseCommand):
     name = "/reset"
     description = "Reset the agent's memory (keep system prompt)"
     
@@ -35,21 +55,21 @@ class ResetCommand:
             context.engine.history = [context.engine.history[0]]
         context.console.print("[green]History cleared.[/green]")
 
-class ExitCommand:
+class ExitCommand(BaseCommand):
     name = "/exit"
     description = "Exit the application"
     
     async def execute(self, context: CommandContext) -> None:
         context.should_exit = True
 
-class QuitCommand:
+class QuitCommand(BaseCommand):
     name = "/quit"
     description = "Exit the application"
     
     async def execute(self, context: CommandContext) -> None:
         context.should_exit = True
 
-class HelpCommand:
+class HelpCommand(BaseCommand):
     name = "/help"
     description = "Show available commands"
     
@@ -57,17 +77,6 @@ class HelpCommand:
         context.console.print("[bold]Available Commands:[/bold]")
         for cmd in REGISTRY.values():
             context.console.print(f"  [yellow]{cmd.name}[/yellow]: {cmd.description}")
-
-# Central Registry
-_COMMANDS: List[Type[SlashCommand]] = [
-    ClearCommand,
-    ResetCommand,
-    ExitCommand,
-    QuitCommand,
-    HelpCommand
-]
-
-REGISTRY: Dict[str, SlashCommand] = {cls.name: cls() for cls in _COMMANDS}
 
 def get_command_names() -> List[str]:
     return list(REGISTRY.keys())
