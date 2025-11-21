@@ -117,14 +117,14 @@ async def run_cli(args):
     port = config.server.port
     base_url = f"http://{host}:{port}"
     
-    # Session ID - for now fixed or random? 
-    # "cli-session" is dangerous if multiple CLIs run.
-    # Let's use a random ID if we don't have persistence flags yet.
-    # Wait, if we use a random ID, we lose history on restart.
-    # Let's use "default-cli" for now to mimic old behavior (persistent per profile).
+    # Session ID Strategy
     import uuid
-    # session_id = f"cli-{uuid.uuid4().hex[:8]}" # ephemeral
-    session_id = "cli-default" # persistent
+    if hasattr(args, "session") and args.session:
+        session_id = args.session
+    else:
+        # Default to ephemeral/random session
+        # We prefix with 'cli-' just for clarity in logs/files
+        session_id = f"cli-{uuid.uuid4().hex[:8]}"
     
     ws_url = f"ws://{host}:{port}/ws/chat/{session_id}?profile={args.profile}&user_id=cli-user"
 

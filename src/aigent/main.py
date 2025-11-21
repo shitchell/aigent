@@ -40,6 +40,7 @@ def entry_point() -> None:
     # Chat Command (CLI)
     chat_parser = subparsers.add_parser("chat", help="Start the CLI chat session")
     chat_parser.add_argument("--profile", type=str, default=config.default_profile, help="Agent profile to load")
+    chat_parser.add_argument("--session", type=str, help="Session ID to join/resume (defaults to new random session)")
     chat_parser.add_argument("--yolo", action="store_true", help="Disable all permission checks (Danger!)")
     chat_parser.add_argument("--replace", action="store_true", help="Kill existing server and start a new one")
 
