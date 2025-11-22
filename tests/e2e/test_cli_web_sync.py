@@ -6,12 +6,14 @@ This test uses real LLM calls to ensure complete integration.
 """
 
 import asyncio
+import subprocess
 import sys
 import os
 import time
 import re
 import pytest
 import pexpect
+import httpx
 from pathlib import Path
 from playwright.async_api import async_playwright, expect
 
@@ -20,16 +22,69 @@ TEST_SESSION_ID = "e2e-test-session"
 TEST_PROMPT = 'This is a test. Please do not make any tool calls. Only respond with the message "Test confirmed" -- no punctuation and no period.'
 EXPECTED_RESPONSE = "Test confirmed"
 SERVER_HOST = "localhost"
-SERVER_PORT = 8000
+SERVER_PORT = 18001  # Use unique port for this test
 TIMEOUT = 30  # seconds for LLM responses
 
 
 class TestCLIWebSync:
     """Test suite for CLI-Web synchronization."""
 
+    @pytest.fixture
+    async def test_server(self):
+        """Fixture to spawn and manage test server."""
+        # First, kill any existing server on default port
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"http://{SERVER_HOST}:8000/api/stats")
+                if resp.status_code == 200:
+                    # Server is running, kill it
+                    subprocess.run([sys.executable, "-m", "aigent.main", "kill-server"], capture_output=True)
+                    await asyncio.sleep(1)
+        except:
+            pass  # No server running
+
+        # Start server process on default port 8000 (CLI expects this)
+        server_proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "aigent.main", "serve",
+            "--host", SERVER_HOST, "--port", "8000", "--yolo",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        # Wait for server to be ready
+        async def wait_for_server(max_attempts=20):
+            for i in range(max_attempts):
+                try:
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(f"http://{SERVER_HOST}:8000/api/stats")
+                        if resp.status_code == 200:
+                            return True
+                except:
+                    pass
+                await asyncio.sleep(0.5)
+            return False
+
+        if not await wait_for_server():
+            server_proc.terminate()
+            await server_proc.wait()
+            pytest.fail("Server failed to start within timeout")
+
+        print(f"✓ Test server started on port 8000")
+
+        yield f"http://{SERVER_HOST}:8000"
+
+        # Cleanup: terminate server
+        server_proc.terminate()
+        try:
+            await asyncio.wait_for(server_proc.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            server_proc.kill()
+            await server_proc.wait()
+        print("✓ Test server stopped")
+
     @pytest.mark.asyncio
     @pytest.mark.e2e
-    async def test_full_bidirectional_sync(self):
+    async def test_full_bidirectional_sync(self, test_server):
         """
         Full E2E test flow:
         1. Launch CLI with specific session ID
@@ -42,7 +97,7 @@ class TestCLIWebSync:
         8. Verify both receive second LLM response
         """
 
-        # Step 1: Launch CLI
+        # Step 1: Launch CLI (it will connect to our test server on port 8000)
         cli_process = pexpect.spawn(
             f"{sys.executable} -m aigent.main chat --session {TEST_SESSION_ID}",
             encoding='utf-8',
@@ -51,8 +106,10 @@ class TestCLIWebSync:
         )
 
         try:
-            # Wait for CLI to be ready (look for prompt)
-            cli_process.expect(r'>', timeout=10)
+            # Wait for CLI to be ready (look for prompt or Connected message)
+            index = cli_process.expect([r'>', 'Connected to Aigent Server'], timeout=15)
+            if index == 1:  # Got "Connected" message
+                cli_process.expect(r'>', timeout=10)
             print("✓ CLI launched and ready")
 
             # Step 2: Launch Playwright
@@ -61,7 +118,7 @@ class TestCLIWebSync:
                 page = await browser.new_page()
 
                 # Navigate to web UI with same session
-                await page.goto(f"http://{SERVER_HOST}:{SERVER_PORT}/?session={TEST_SESSION_ID}")
+                await page.goto(f"http://{SERVER_HOST}:8000/?session={TEST_SESSION_ID}")
                 await page.wait_for_load_state("networkidle")
                 print("✓ Browser connected to web UI")
 
@@ -143,7 +200,7 @@ class TestCLIWebSync:
 
     @pytest.mark.asyncio
     @pytest.mark.e2e
-    async def test_cli_output_quality(self):
+    async def test_cli_output_quality(self, test_server):
         """
         Test that CLI output is clean without rendering artifacts.
         Uses pexpect to capture raw terminal output.

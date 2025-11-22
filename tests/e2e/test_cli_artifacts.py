@@ -12,12 +12,64 @@ import pty
 import select
 import time
 import re
+import httpx
 from pathlib import Path
 from typing import List, Tuple
+
+SERVER_HOST = "localhost"
+SERVER_PORT = 8000
 
 
 class TestCLIArtifacts:
     """Test suite for detecting CLI rendering artifacts."""
+
+    @pytest.fixture
+    async def test_server(self):
+        """Fixture to spawn and manage test server."""
+        # First, kill any existing server
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"http://{SERVER_HOST}:{SERVER_PORT}/api/stats")
+                if resp.status_code == 200:
+                    subprocess.run([sys.executable, "-m", "aigent.main", "kill-server"], capture_output=True)
+                    await asyncio.sleep(1)
+        except:
+            pass
+
+        # Start server process
+        server_proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "aigent.main", "serve",
+            "--host", SERVER_HOST, "--port", str(SERVER_PORT), "--yolo",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+
+        # Wait for server
+        for i in range(20):
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(f"http://{SERVER_HOST}:{SERVER_PORT}/api/stats")
+                    if resp.status_code == 200:
+                        break
+            except:
+                pass
+            await asyncio.sleep(0.5)
+        else:
+            server_proc.terminate()
+            await server_proc.wait()
+            pytest.fail("Server failed to start")
+
+        print(f"✓ Test server started on port {SERVER_PORT}")
+        yield
+
+        # Cleanup
+        server_proc.terminate()
+        try:
+            await asyncio.wait_for(server_proc.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            server_proc.kill()
+            await server_proc.wait()
+        print("✓ Test server stopped")
 
     def analyze_output_for_artifacts(self, output: str) -> List[str]:
         """
@@ -103,7 +155,7 @@ class TestCLIArtifacts:
 
     @pytest.mark.asyncio
     @pytest.mark.e2e
-    async def test_cli_clean_output_simple_message(self):
+    async def test_cli_clean_output_simple_message(self, test_server):
         """Test CLI output for simple messages has no artifacts."""
 
         # Create a test script that sends a simple message
@@ -177,79 +229,62 @@ asyncio.run(test_cli())
 
     @pytest.mark.asyncio
     @pytest.mark.e2e
-    async def test_cli_stress_rapid_messages(self):
+    async def test_cli_stress_rapid_messages(self, test_server):
         """Test CLI under stress with rapid message sending."""
 
-        port = 18200
-
-        # Start a server for the test
-        server_proc = subprocess.Popen(
-            [sys.executable, "-m", "aigent.main", "serve", "--port", str(port), "--yolo"],
+        # Start CLI process
+        cli_proc = subprocess.Popen(
+            [sys.executable, "-m", "aigent.main", "chat", "--session", "stress-test", "--yolo"],
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=0
         )
 
-        # Wait for server
-        await asyncio.sleep(3)
+        # Send rapid messages
+        messages = [
+            "First message\n",
+            "Second message quickly\n",
+            "Third message immediately\n",
+        ]
 
-        try:
-            # Start CLI process
-            cli_proc = subprocess.Popen(
-                [sys.executable, "-m", "aigent.main", "chat", "--session", "stress-test", "--yolo"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=0
-            )
+        output_lines = []
 
-            # Send rapid messages
-            messages = [
-                "First message\n",
-                "Second message quickly\n",
-                "Third message immediately\n",
-            ]
+        for msg in messages:
+            cli_proc.stdin.write(msg)
+            cli_proc.stdin.flush()
 
-            output_lines = []
+            # Capture output for a short time
+            start = time.time()
+            while time.time() - start < 0.5:
+                line = cli_proc.stdout.readline()
+                if line:
+                    output_lines.append(line)
 
-            for msg in messages:
-                cli_proc.stdin.write(msg)
-                cli_proc.stdin.flush()
+        # Analyze captured output
+        full_output = ''.join(output_lines)
+        issues = self.analyze_output_for_artifacts(full_output)
 
-                # Capture output for a short time
-                start = time.time()
-                while time.time() - start < 0.5:
-                    line = cli_proc.stdout.readline()
-                    if line:
-                        output_lines.append(line)
+        # In stress test, we're particularly looking for race conditions
+        race_indicators = [
+            '\r' in full_output and full_output.count('\r') > len(messages),
+            re.search(r'\x1b\[\d+[AD]', full_output),  # Cursor up/left movements
+            '?[' in full_output,
+        ]
 
-            # Analyze captured output
-            full_output = ''.join(output_lines)
-            issues = self.analyze_output_for_artifacts(full_output)
+        if any(race_indicators):
+            issues.append("Possible race condition artifacts detected")
 
-            # In stress test, we're particularly looking for race conditions
-            race_indicators = [
-                '\r' in full_output and full_output.count('\r') > len(messages),
-                re.search(r'\x1b\[\d+[AD]', full_output),  # Cursor up/left movements
-                '?[' in full_output,
-            ]
+        cli_proc.terminate()
 
-            if any(race_indicators):
-                issues.append("Possible race condition artifacts detected")
-
-            cli_proc.terminate()
-
-            if issues:
-                # Report but don't fail for stress test
-                print(f"Stress test artifacts detected:\n" + "\n".join(issues))
-
-        finally:
-            server_proc.terminate()
-            server_proc.wait(timeout=5)
+        if issues:
+            # Report but don't fail for stress test
+            print(f"Stress test artifacts detected:\n" + "\n".join(issues))
 
     @pytest.mark.asyncio
     @pytest.mark.e2e
-    async def test_cli_tool_output_rendering(self):
+    async def test_cli_tool_output_rendering(self, test_server):
         """Test CLI rendering when tools are invoked."""
 
         # This test would ideally mock tool outputs and check rendering
@@ -272,7 +307,7 @@ asyncio.run(test_cli())
 
     @pytest.mark.asyncio
     @pytest.mark.e2e
-    async def test_cli_long_output_handling(self):
+    async def test_cli_long_output_handling(self, test_server):
         """Test CLI handling of long outputs without artifacts."""
 
         # Generate a long output scenario

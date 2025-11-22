@@ -4,24 +4,77 @@ This provides another way to test CLI without external dependencies.
 """
 
 import asyncio
+import subprocess
 import sys
 import os
 import pytest
 import re
+import httpx
 from pathlib import Path
 
 # Test configuration
 TEST_PROMPT = 'This is a test. Please do not make any tool calls. Only respond with the message "Test confirmed" -- no punctuation and no period.'
 EXPECTED_RESPONSE = "Test confirmed"
 TIMEOUT = 30
+SERVER_HOST = "localhost"
+SERVER_PORT = 8000
 
 
 class TestCLIAsyncio:
     """Test CLI using asyncio.subprocess for terminal interaction."""
 
+    @pytest.fixture
+    async def test_server(self):
+        """Fixture to spawn and manage test server."""
+        # First, kill any existing server on default port
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"http://{SERVER_HOST}:{SERVER_PORT}/api/stats")
+                if resp.status_code == 200:
+                    # Server is running, kill it
+                    subprocess.run([sys.executable, "-m", "aigent.main", "kill-server"], capture_output=True)
+                    await asyncio.sleep(1)
+        except:
+            pass  # No server running
+
+        # Start server process
+        server_proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "aigent.main", "serve",
+            "--host", SERVER_HOST, "--port", str(SERVER_PORT), "--yolo",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+
+        # Wait for server to be ready
+        for i in range(20):
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(f"http://{SERVER_HOST}:{SERVER_PORT}/api/stats")
+                    if resp.status_code == 200:
+                        break
+            except:
+                pass
+            await asyncio.sleep(0.5)
+        else:
+            server_proc.terminate()
+            await server_proc.wait()
+            pytest.fail("Server failed to start")
+
+        print(f"✓ Test server started on port {SERVER_PORT}")
+        yield
+
+        # Cleanup
+        server_proc.terminate()
+        try:
+            await asyncio.wait_for(server_proc.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            server_proc.kill()
+            await server_proc.wait()
+        print("✓ Test server stopped")
+
     @pytest.mark.asyncio
     @pytest.mark.e2e
-    async def test_cli_basic_interaction(self):
+    async def test_cli_basic_interaction(self, test_server):
         """Test basic CLI interaction using asyncio.subprocess."""
 
         # Create process with PTY for proper terminal emulation
@@ -105,7 +158,7 @@ class TestCLIAsyncio:
 
     @pytest.mark.asyncio
     @pytest.mark.e2e
-    async def test_cli_rapid_messages(self):
+    async def test_cli_rapid_messages(self, test_server):
         """Test CLI with rapid consecutive messages to detect race conditions."""
 
         process = await asyncio.create_subprocess_exec(

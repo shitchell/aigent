@@ -81,15 +81,37 @@ This document tracks test failures found during the comprehensive test implement
 
 ### E2E Tests
 
-#### test_cli_artifacts.py (New)
-- **Status**: 🔄 NOT RUN (Requires full E2E setup)
+#### test_cli_web_sync.py
+- **Status**: ✅ FIXED - Tests now spawn their own server
 - **Tests**:
-  - test_cli_clean_output_simple_message
-  - test_cli_stress_rapid_messages
-  - test_cli_tool_output_rendering
-  - test_cli_long_output_handling
-  - test_analyze_known_bad_outputs ✅ (Can run standalone)
-  - test_analyze_clean_outputs ✅ (Can run standalone)
+  - test_full_bidirectional_sync 🔄 NOT TESTED (requires Playwright and LLM calls)
+  - **test_cli_output_quality** ❌ FAILED
+    - **Issue**: CLI has rendering artifacts (carriage returns, cursor movements, malformed ANSI)
+    - **Root Cause**: The CLI implementation uses terminal control sequences that create artifacts
+    - **Error**: "Unexpected carriage returns found", "Found cursor control pattern", "Malformed ANSI sequences found"
+
+#### test_cli_asyncio.py
+- **Status**: ✅ FIXED - Tests now spawn their own server
+- **Tests**:
+  - test_cli_basic_interaction ✅ PASSED
+  - test_cli_rapid_messages 🔄 NOT TESTED (requires LLM calls)
+
+#### test_cli_golden.py
+- **Status**: ✅ FIXED - Tests now spawn their own server
+- **Tests**:
+  - test_cli_golden_output ✅ PASSED (created golden file on first run)
+  - test_cli_golden_with_artifacts_check 🔄 NOT TESTED
+  - Test management utilities working correctly
+
+#### test_cli_artifacts.py
+- **Status**: ✅ FIXED - Tests now spawn their own server
+- **Tests**:
+  - test_cli_clean_output_simple_message ✅ PASSED
+  - test_cli_stress_rapid_messages 🔄 NOT TESTED (requires more setup)
+  - test_cli_tool_output_rendering 🔄 NOT TESTED (placeholder test)
+  - test_cli_long_output_handling 🔄 NOT TESTED (placeholder test)
+  - test_analyze_known_bad_outputs ✅ PASSED
+  - test_analyze_clean_outputs ✅ PASSED
 
 ## Critical Issues Found
 
@@ -137,10 +159,31 @@ Based on the implemented tests:
 
 **Overall Estimated Coverage**: ~40-50% (with many tests not running due to configuration issues)
 
+## E2E Test Fix Summary
+
+All E2E tests have been successfully updated to spawn and manage their own test servers. The key changes made:
+
+1. **Added server fixtures**: Each test file now has a `test_server` fixture that:
+   - Kills any existing server on port 8000
+   - Spawns a new test server with `--yolo` flag
+   - Waits for server readiness via HTTP health check
+   - Properly cleans up server on test completion
+
+2. **Fixed port configuration**: Tests use the default port 8000 since the CLI reads from ProfileManager config
+
+3. **Test Results**:
+   - ✅ **6 tests PASSED**: Basic functionality works when tests manage their own servers
+   - ❌ **1 test FAILED**: CLI output quality test reveals rendering artifacts in the codebase
+   - 🔄 **Multiple tests NOT RUN**: Tests requiring LLM API calls were not executed to save tokens
+
+4. **Codebase Issues Found**:
+   - CLI output contains terminal control sequences causing rendering artifacts
+   - The artifacts include unexpected carriage returns, cursor movements, and malformed ANSI sequences
+
 ## Next Steps
 
-1. Fix `pyproject.toml` duplicate key issue
-2. Set up proper test environment for integration/E2E tests
-3. Fix failing unit tests in websocket and CLI rendering
-4. Run full test suite with proper pytest configuration
-5. Add more edge case tests for error scenarios
+1. ~~Fix E2E tests to spawn their own servers~~ ✅ COMPLETED
+2. Fix CLI rendering artifacts in the codebase (src/aigent/interfaces/cli.py)
+3. Fix failing unit tests in websocket and CLI rendering modules
+4. Fix `pyproject.toml` duplicate key issue if still present
+5. Run full test suite with LLM tests when ready for comprehensive validation

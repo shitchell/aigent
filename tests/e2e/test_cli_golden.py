@@ -4,11 +4,13 @@ Compares actual CLI output against a known-good reference to detect any changes.
 """
 
 import asyncio
+import subprocess
 import sys
 import os
 import pytest
 import hashlib
 import difflib
+import httpx
 from pathlib import Path
 import pexpect
 
@@ -16,6 +18,8 @@ import pexpect
 TEST_PROMPT = 'This is a test. Please do not make any tool calls. Only respond with the message "Test confirmed" -- no punctuation and no period.'
 EXPECTED_RESPONSE = "Test confirmed"
 TIMEOUT = 30
+SERVER_HOST = "localhost"
+SERVER_PORT = 8000
 
 # Path to golden files
 GOLDEN_DIR = Path(__file__).parent / "golden_files"
@@ -25,9 +29,57 @@ GOLDEN_DIR.mkdir(exist_ok=True)
 class TestCLIGolden:
     """Golden file tests for CLI output stability."""
 
+    @pytest.fixture
+    async def test_server(self):
+        """Fixture to spawn and manage test server."""
+        # First, kill any existing server
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"http://{SERVER_HOST}:{SERVER_PORT}/api/stats")
+                if resp.status_code == 200:
+                    subprocess.run([sys.executable, "-m", "aigent.main", "kill-server"], capture_output=True)
+                    await asyncio.sleep(1)
+        except:
+            pass
+
+        # Start server process
+        server_proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "aigent.main", "serve",
+            "--host", SERVER_HOST, "--port", str(SERVER_PORT), "--yolo",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+
+        # Wait for server
+        for i in range(20):
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.get(f"http://{SERVER_HOST}:{SERVER_PORT}/api/stats")
+                    if resp.status_code == 200:
+                        break
+            except:
+                pass
+            await asyncio.sleep(0.5)
+        else:
+            server_proc.terminate()
+            await server_proc.wait()
+            pytest.fail("Server failed to start")
+
+        print(f"✓ Test server started on port {SERVER_PORT}")
+        yield
+
+        # Cleanup
+        server_proc.terminate()
+        try:
+            await asyncio.wait_for(server_proc.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            server_proc.kill()
+            await server_proc.wait()
+        print("✓ Test server stopped")
+
     @pytest.mark.asyncio
     @pytest.mark.e2e
-    async def test_cli_golden_output(self):
+    async def test_cli_golden_output(self, test_server):
         """
         Compare CLI output against a golden reference file.
         This ensures output remains stable across changes.
@@ -70,7 +122,7 @@ class TestCLIGolden:
 
     @pytest.mark.asyncio
     @pytest.mark.e2e
-    async def test_cli_golden_with_artifacts_check(self):
+    async def test_cli_golden_with_artifacts_check(self, test_server):
         """
         Dual test: Compare against golden file AND check for specific artifacts.
         This gives us both regression detection and specific issue detection.
