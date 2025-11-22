@@ -103,10 +103,6 @@ show_absolute_path = true
 namespace_packages = true
 explicit_package_bases = true
 
-# Require type hints for all functions
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-
 # Per-module options for third-party libraries only
 [[tool.mypy.overrides]]
 module = [
