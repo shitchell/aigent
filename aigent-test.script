@@ -1,0 +1,91 @@
+Script started on 2025-11-21 23:38:33-05:00 [TERM="screen-256color" TTY="/dev/pts/65" COLUMNS="159" LINES="42"]
+Starting chat with profile: default
+Starting background server...
+[0m[?7h[0;38;5;28mConnected to Aigent Server.[0m
+[0m[6n[?2004h[?1l[?25l[0m[?7l[0m[J[0;1m>[0m
+
+
+
+
+
+
+[0m [7A[2C[?7h[0m[?12l[?25h[?25l[?7l[0m
+
+
+
+
+
+
+[0m [0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0m [35A[2C[?7h[0m[?12l[?25h[?25l[?7l[0m'This is a test. Please do not make any tool calls. Only respond with the message "Test confirmed" -- no punctuation and no period.'[?7h[0m[?12l[?25h[?25l[?7l[134D[0m[J[0;1m> [0m'This is a test. Please do not make any tool calls. Only respond with the message "Test confirmed" -- no punctuation and no period.'[134D[0m
+[J[?7h[0m[?12l[?25h[?2004l[0m[?7h[0mTest[0m[0m[?7h[0m confirmed[0m[0m[?7h[0m
+[0m[6n[?2004h[?25l[0m[?7l[0m[J[0;1m>[0m
+
+
+
+
+
+
+[0m [7A[2C[?7h[0m[?12l[?25h[?25l[?7l[0m
+
+
+
+
+
+
+[0m [0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0m [33A[2C[?7h[0m[?12l[?25h[?25l[?7l[2D[0m[J[0;38;5;102;1m> [0;38;5;102m                                                                                                                                                            [158C [0m
+[J[?7h[0m[?12l[?25h[?2004l
+Script done on 2025-11-21 23:38:43-05:00 [COMMAND_EXIT_CODE="0"]
