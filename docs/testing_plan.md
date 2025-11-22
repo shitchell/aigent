@@ -1,7 +1,7 @@
 # Testing Plan: Unified Client-Server & Shared Sessions
 
 ## Overview
-This plan covers the verification strategy for the new Client-Server architecture, ensuring robustness in session management, lifecycle handling, and synchronization between different client types (CLI and Web).
+This plan covers the verification strategy for the new Client-Server architecture, ensuring robustness in session management, lifecycle handling, synchronization between different client types (CLI and Web), and **preventing regression of CLI rendering issues**.
 
 ## 1. Unit Tests (`tests/unit/`)
 
@@ -24,6 +24,15 @@ This plan covers the verification strategy for the new Client-Server architectur
 *   **Cases:**
     *   **Protocol:** Connect, Send "Hello", Receive `TOKEN` events.
     *   **Broadcasting:** Connect Client A and Client B. Send from A. Verify B receives `USER_INPUT` event.
+
+### `test_cli_rendering.py` (CRITICAL - New)
+*   **Goal:** Prevent regression of CLI rendering bugs.
+*   **Cases:**
+    *   **No ANSI Escape Sequences:** Verify output contains no `\x1b[`, `\r`, or malformed sequences like `?[`
+    *   **Event Synchronization:** Verify prompt only appears after FINISH event
+    *   **Token Buffering:** Verify tokens are buffered and flushed in chunks, not character-by-character
+    *   **No Rich Library:** Verify Rich is not imported anywhere in CLI code
+    *   **Ready State:** Test `ready_for_input` event properly gates prompt display
 
 ## 2. Integration Tests (`tests/integration/`)
 
@@ -61,8 +70,23 @@ This plan covers the verification strategy for the new Client-Server architectur
         *   **Verify:** Both clients receive the second LLM response.
     7.  **Exit:** Terminate CLI. Verify browser disconnects (or server stays up depending on logic).
 
+### `test_cli_artifacts.py` (CRITICAL - New)
+*   **Goal:** Detect rendering artifacts using script recording.
+*   **Flow:**
+    1.  **Record Session:** Use `script` command or pty to record raw terminal output
+    2.  **Send Messages:** Send various message types (short, long, with tools)
+    3.  **Analyze Recording:**
+        *   Check for carriage returns (`\r`) in unexpected places
+        *   Check for ANSI sequences beyond basic colors
+        *   Check for cursor movement codes (`\x1b[nA`, `\x1b[nC`)
+        *   Verify no "Window too small" messages
+    4.  **Stress Test:** Send rapid consecutive messages to test race conditions
+
 ## 4. Pre-Flight Checklist
 Before merging the `feat/unified-client-server` branch:
-1.  All Unit tests pass.
+1.  All Unit tests pass (especially `test_cli_rendering.py`).
 2.  `test_shared_session_sync.py` passes reliably (no race conditions).
-3.  Manual verification of `/fork` and `/session` autocomplete in the CLI.
+3.  `test_cli_artifacts.py` shows ZERO rendering artifacts.
+4.  Manual verification of `/fork` and `/session` autocomplete in the CLI.
+5.  Verify `--version` flag works correctly.
+6.  No regression of fixed bugs (no Rich library, proper event sync).
