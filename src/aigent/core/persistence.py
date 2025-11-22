@@ -1,4 +1,5 @@
 import json
+from .. import __version__
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from langchain_core.messages import messages_to_dict, messages_from_dict, BaseMessage
@@ -25,7 +26,7 @@ class SessionManager:
             data = {
                 "profile": profile_name,
                 "history": messages_to_dict(history),
-                "version": "1.0"
+                "version": __version__
             }
             async with aiofiles.open(self._get_path(session_id), "w") as f:
                 await f.write(json.dumps(data, indent=2))

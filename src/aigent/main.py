@@ -3,6 +3,7 @@ import argparse
 import asyncio
 from pathlib import Path
 
+from . import __version__
 from aigent.interfaces.cli import run_cli
 from aigent.server.api import run_server
 from aigent.server.lifecycle import kill_server_process
@@ -35,6 +36,9 @@ def entry_point() -> None:
     # Add --config to main parser for help text consistency (handled above)
     parser.add_argument("--config", type=str, help="Path to configuration file")
     
+    # Command parameters
+    parser.add_argument("--version", action="store_true", help="Show version and exit")
+    
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Chat Command (CLI)
@@ -54,6 +58,11 @@ def entry_point() -> None:
     subparsers.add_parser("kill-server", help="Terminate the running Aigent server")
 
     args = parser.parse_args()
+    
+    # If version requested, show and exit
+    if args.version:
+        print(f"{__package__}: {__version__}")
+        exit(0)
 
     if args.command == "serve":
         print(f"Starting server on {args.host}:{args.port}...")

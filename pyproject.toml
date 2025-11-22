@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aigent"
-version = "0.1.0"
+version = "0.1.1"
 description = "A robust, async-first LangChain agent with CLI and Web interfaces."
 readme = "README.md"
 requires-python = ">=3.11"
