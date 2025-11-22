@@ -1,0 +1,23 @@
+# Testing dependencies for Aigent
+
+# Core testing framework
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+pytest-timeout>=2.1.0
+
+# Terminal interaction testing
+pexpect>=4.8.0  # For CLI E2E tests
+
+# Web testing
+playwright>=1.40.0  # For browser automation
+
+# HTTP client for API testing
+httpx>=0.25.0
+
+# Mocking
+pytest-mock>=3.10.0
+
+# Test utilities
+faker>=20.0.0  # Generate test data
+freezegun>=1.2.0  # Mock datetime
