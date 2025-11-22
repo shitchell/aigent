@@ -37,7 +37,7 @@ def start_server(host: str, port: int, yolo: bool):
     Popen(cmd, stdout=DEVNULL, stderr=DEVNULL, start_new_session=True)
 
 
-async def ws_listener(ws, profile_config):
+async def ws_listener(ws, profile_config, ready_for_input: asyncio.Event):
     """
     WebSocket listener that receives events and prints them.
     Buffers tokens to avoid excessive print_formatted_text calls.
@@ -98,6 +98,7 @@ async def ws_listener(ws, profile_config):
 
                 elif event_type == EventType.ERROR:
                     print_formatted_text(HTML(f"<red>Error: {content}</red>"))
+                    ready_for_input.set()
 
                 elif event_type == EventType.SYSTEM:
                     print_formatted_text(HTML(f"<green>System: {content}</green>"))
@@ -110,6 +111,7 @@ async def ws_listener(ws, profile_config):
                     # End of turn - flush any remaining tokens and add newline
                     await flush_tokens()
                     print_formatted_text("")  # Newline for next prompt
+                    ready_for_input.set()
 
                 elif event_type == EventType.APPROVAL_REQUEST:
                     tool = metadata.get("tool")
@@ -121,6 +123,7 @@ async def ws_listener(ws, profile_config):
                     print_formatted_text(HTML(f"<orange>✋ Permission Request: {tool}</orange>"))
                     print_formatted_text(f"   Args: {args}")
                     print_formatted_text(HTML("<b><orange>   Allow? [y/n/a(lways tool)/s(smart)]</orange></b>"))
+                    ready_for_input.set()
 
     except websockets.ConnectionClosed:
         # Flush any remaining tokens before disconnecting
@@ -164,68 +167,74 @@ async def run_cli(args):
             return
 
     # 2. Connect & Loop
+    ready_for_input = asyncio.Event()
+    ready_for_input.set()
+
     try:
         async with websockets.connect(ws_url) as ws:
-            # Use patch_stdout for the ENTIRE session to coordinate all output
-            with patch_stdout():
-                from prompt_toolkit import print_formatted_text
-                print_formatted_text(HTML("<green>Connected to Aigent Server.</green>"))
+            from prompt_toolkit import print_formatted_text
+            print_formatted_text(HTML("<green>Connected to Aigent Server.</green>"))
 
-                # Start Listener
-                listener = asyncio.create_task(ws_listener(ws, config))
+            # Start Listener
+            listener = asyncio.create_task(ws_listener(ws, config, ready_for_input))
 
-                # Setup Prompt
-                slash_completer = WordCompleter(get_command_names(), ignore_case=True)
-                session = PromptSession(completer=slash_completer)
+            # Setup Prompt
+            slash_completer = WordCompleter(get_command_names(), ignore_case=True)
+            session = PromptSession(completer=slash_completer)
 
-                cmd_context = CommandContext(websocket=ws)
+            cmd_context = CommandContext(websocket=ws)
 
-                while True:
-                    if listener.done():
-                        break
+            while True:
+                if listener.done():
+                    break
 
-                    # Dynamic Prompt
-                    prompt_text = HTML("<b>> </b>")
-                    if CLIENT_STATE["pending_approval_id"]:
-                        prompt_text = HTML("<b><orange>Decision > </orange></b>")
+                # Wait until we're allowed to prompt again (after FINISH/approval)
+                await ready_for_input.wait()
 
-                    try:
+                # Dynamic Prompt
+                prompt_text = HTML("<b>> </b>")
+                if CLIENT_STATE["pending_approval_id"]:
+                    prompt_text = HTML("<b><orange>Decision > </orange></b>")
+
+                try:
+                    with patch_stdout():
                         user_input = await session.prompt_async(prompt_text)
-                    except (EOFError, KeyboardInterrupt):
-                        break
+                except (EOFError, KeyboardInterrupt):
+                    break
 
-                    if not user_input.strip():
+                if not user_input.strip():
+                    continue
+
+                # Handle Approval Response
+                if CLIENT_STATE["pending_approval_id"]:
+                    ans = user_input.lower().strip()
+                    decision = "deny"
+                    if ans in ['y', 'yes']: decision = "allow"
+                    elif ans in ['n', 'no']: decision = "deny"
+                    elif ans in ['a', 'always']: decision = "always_tool"
+                    elif ans in ['s', 'smart']: decision = "always_smart"
+
+                    msg = {
+                        "type": "approval_response",
+                        "request_id": CLIENT_STATE["pending_approval_id"],
+                        "decision": decision
+                    }
+                    await ws.send(json.dumps(msg))
+                    CLIENT_STATE["pending_approval_id"] = None
+                    continue
+
+                # Handle Commands
+                if user_input.strip().startswith("/"):
+                    if await handle_command(user_input, cmd_context):
+                        if cmd_context.should_exit:
+                            break
                         continue
 
-                    # Handle Approval Response
-                    if CLIENT_STATE["pending_approval_id"]:
-                        ans = user_input.lower().strip()
-                        decision = "deny"
-                        if ans in ['y', 'yes']: decision = "allow"
-                        elif ans in ['n', 'no']: decision = "deny"
-                        elif ans in ['a', 'always']: decision = "always_tool"
-                        elif ans in ['s', 'smart']: decision = "always_smart"
+                # Send Chat Message and wait for response before next prompt
+                ready_for_input.clear()
+                await ws.send(user_input)
 
-                        msg = {
-                            "type": "approval_response",
-                            "request_id": CLIENT_STATE["pending_approval_id"],
-                            "decision": decision
-                        }
-                        await ws.send(json.dumps(msg))
-                        CLIENT_STATE["pending_approval_id"] = None
-                        continue
-
-                    # Handle Commands
-                    if user_input.strip().startswith("/"):
-                        if await handle_command(user_input, cmd_context):
-                            if cmd_context.should_exit:
-                                break
-                            continue
-
-                    # Send Chat Message
-                    await ws.send(user_input)
-
-                listener.cancel()
+            listener.cancel()
 
     except Exception as e:
         print(f"Error: {e}")
