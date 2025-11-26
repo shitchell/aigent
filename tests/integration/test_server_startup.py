@@ -237,13 +237,25 @@ class TestServerStartup:
     @pytest.mark.asyncio
     async def test_kill_server_command(self):
         """Test that kill-server command properly terminates a running server."""
-        port = 18006
+        # Use the default port since kill-server uses config defaults
+        port = 8000
         proc = None
 
+        # First check if a server is already running on default port
         try:
-            # Start server
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"http://localhost:{port}/api/stats", timeout=1.0)
+                if resp.status_code == 200:
+                    # Kill existing server first
+                    subprocess.run([sys.executable, "-m", "aigent.main", "kill-server"], timeout=5)
+                    await asyncio.sleep(2)
+        except:
+            pass  # No server running, good
+
+        try:
+            # Start server on default port
             proc = subprocess.Popen(
-                [sys.executable, "-m", "aigent.main", "serve", "--port", str(port)],
+                [sys.executable, "-m", "aigent.main", "serve"],  # Use default port
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True
@@ -263,10 +275,13 @@ class TestServerStartup:
                 [sys.executable, "-m", "aigent.main", "kill-server"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
-                env={**os.environ, "AIGENT_PORT": str(port)}  # Pass port via env if needed
+                text=True
             )
-            kill_proc.wait(timeout=5)
+            kill_output, kill_err = kill_proc.communicate(timeout=5)
+
+            # Check that kill command succeeded
+            assert "Server terminated" in kill_output or "Sent SIGTERM" in kill_output, \
+                   f"Kill command failed. Output: {kill_output}, Error: {kill_err}"
 
             # Wait a bit for server to die
             await asyncio.sleep(2)
@@ -277,7 +292,8 @@ class TestServerStartup:
                     await client.get(f"http://localhost:{port}/", timeout=1.0)
 
             # Verify process is dead
-            if proc.poll() is None:
+            proc_return = proc.poll()
+            if proc_return is None:
                 # Process still running, that's unexpected
                 pytest.fail("Server process did not terminate after kill-server command")
 

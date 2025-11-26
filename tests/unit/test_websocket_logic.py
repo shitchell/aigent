@@ -106,7 +106,8 @@ class TestWebSocketProtocol:
     @pytest.mark.asyncio
     async def test_token_event_generation(self):
         """Test that TOKEN events are properly generated and sent."""
-        manager = ConnectionManager()
+        # Import the global manager from api module
+        from aigent.server.api import manager
 
         # Setup mock session
         session_id = "token-test"
@@ -114,8 +115,8 @@ class TestWebSocketProtocol:
         ws.send_text = AsyncMock()
         manager.active_connections[session_id] = [ws]
 
-        # Create mock engine
-        mock_engine = AsyncMock()
+        # Create mock engine - Use MagicMock, not AsyncMock for the engine itself
+        mock_engine = MagicMock()
         mock_engine.profile = MagicMock()
         mock_engine.profile.name = "test"
         mock_engine.history = []
@@ -138,10 +139,7 @@ class TestWebSocketProtocol:
         # Process a message
         await process_chat_message(session_id, "Test input", "test-user")
 
-        # Give async tasks time to complete
-        await asyncio.sleep(0.1)
-
-        # Verify TOKEN events were broadcast
+        # Verify TOKEN events were broadcast (no sleep needed since it's synchronous)
         calls = [call[0][0] for call in ws.send_text.call_args_list]
 
         # Parse JSON and check event types
@@ -149,11 +147,16 @@ class TestWebSocketProtocol:
         token_events = [e for e in events if e['type'] == EventType.TOKEN]
         finish_events = [e for e in events if e['type'] == EventType.FINISH]
 
-        assert len(token_events) == 3
+        assert len(token_events) == 3, f"Expected 3 token events, got {len(token_events)}. All events: {events}"
         assert len(finish_events) == 1
         assert token_events[0]['content'] == "Hello"
         assert token_events[1]['content'] == " "
         assert token_events[2]['content'] == "World"
+
+        # Clean up the global manager
+        del manager.sessions[session_id]
+        del manager.locks[session_id]
+        del manager.active_connections[session_id]
 
     @pytest.mark.asyncio
     async def test_approval_response_handling(self):
@@ -264,12 +267,13 @@ class TestWebSocketProtocol:
     @pytest.mark.asyncio
     async def test_concurrent_session_locks(self):
         """Test that session locks prevent concurrent message processing."""
-        manager = ConnectionManager()
+        # Import the global manager from api module
+        from aigent.server.api import manager
 
         session_id = "lock-test"
 
-        # Create mock engine
-        mock_engine = AsyncMock()
+        # Create mock engine - Use MagicMock, not AsyncMock
+        mock_engine = MagicMock()
         mock_engine.profile = MagicMock()
         mock_engine.profile.name = "test"
 
@@ -299,18 +303,24 @@ class TestWebSocketProtocol:
         # Verify sequential processing
         assert call_order == ["start_message1", "end_message1", "start_message2", "end_message2"]
 
+        # Clean up the global manager
+        del manager.sessions[session_id]
+        del manager.locks[session_id]
+        del manager.active_connections[session_id]
+
     @pytest.mark.asyncio
     async def test_error_event_on_exception(self):
         """Test that errors in processing generate ERROR events."""
-        manager = ConnectionManager()
+        # Import the global manager from api module
+        from aigent.server.api import manager
 
         session_id = "error-test"
         ws = AsyncMock()
         ws.send_text = AsyncMock()
         manager.active_connections[session_id] = [ws]
 
-        # Create mock engine that raises an error
-        mock_engine = AsyncMock()
+        # Create mock engine that raises an error - Use MagicMock
+        mock_engine = MagicMock()
         mock_engine.profile = MagicMock()
         mock_engine.profile.name = "test"
 
@@ -332,3 +342,8 @@ class TestWebSocketProtocol:
         error_events = [e for e in events if e['type'] == EventType.ERROR]
         assert len(error_events) == 1
         assert "Test error occurred" in error_events[0]['content']
+
+        # Clean up the global manager
+        del manager.sessions[session_id]
+        del manager.locks[session_id]
+        del manager.active_connections[session_id]

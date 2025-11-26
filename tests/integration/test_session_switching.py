@@ -38,16 +38,28 @@ class TestSessionSwitching:
 
         return proc
 
-    async def receive_until_finish(self, ws) -> List[dict]:
+    async def receive_until_finish(self, ws, timeout: float = 5.0) -> List[dict]:
         """Receive messages until FINISH event."""
         messages = []
         while True:
             try:
-                msg = await asyncio.wait_for(ws.recv(), timeout=5.0)
+                msg = await asyncio.wait_for(ws.recv(), timeout=timeout)
                 data = json.loads(msg)
                 messages.append(data)
                 if data.get("type") == "finish":
                     break
+            except asyncio.TimeoutError:
+                break
+        return messages
+
+    async def drain_all_messages(self, ws, timeout: float = 0.5) -> List[dict]:
+        """Drain all available messages until no more are coming (short timeout)."""
+        messages = []
+        while True:
+            try:
+                msg = await asyncio.wait_for(ws.recv(), timeout=timeout)
+                data = json.loads(msg)
+                messages.append(data)
             except asyncio.TimeoutError:
                 break
         return messages
@@ -95,17 +107,27 @@ class TestSessionSwitching:
 
             # Reconnect to session 1 and verify history
             async with websockets.connect(ws1_url) as ws1:
-                # Should receive history replay
-                await asyncio.sleep(1)  # Give time for history replay
+                # Wait a moment for connection to stabilize
+                await asyncio.sleep(0.2)
 
-                # Send another message
+                # Drain ALL history replay messages (may include multiple FINISH events)
+                history_messages = await self.drain_all_messages(ws1, timeout=2.0)
+
+                # Verify history contains the original message
+                history_user_inputs = [m for m in history_messages if m.get("type") == "user_input"]
+                assert any("Hello from session 1" in m.get("content", "") for m in history_user_inputs), \
+                    f"Expected to find 'Hello from session 1' in history replay. Got: {history_messages}"
+
+                # Now send another message
                 await ws1.send("Back to session 1")
 
+                # This time receive_until_finish gets the new message's events
                 messages = await self.receive_until_finish(ws1)
 
                 # Should see the new message
                 user_inputs = [m for m in messages if m.get("type") == "user_input"]
-                assert any("Back to session 1" in m.get("content", "") for m in user_inputs)
+                assert any("Back to session 1" in m.get("content", "") for m in user_inputs), \
+                    f"Expected to find 'Back to session 1' in new messages. Got: {messages}"
 
         finally:
             if proc:
@@ -226,27 +248,25 @@ class TestSessionSwitching:
 
             # Second connection to same session
             async with websockets.connect(ws_url) as ws:
-                # Should receive history on connect
-                history_messages = []
-                try:
-                    # Collect any history replay
-                    for _ in range(10):
-                        msg = await asyncio.wait_for(ws.recv(), timeout=0.5)
-                        data = json.loads(msg)
-                        history_messages.append(data)
-                except asyncio.TimeoutError:
-                    pass
+                # Wait a moment for connection to stabilize
+                await asyncio.sleep(0.2)
+
+                # Drain ALL history replay messages (may include multiple FINISH events)
+                history_messages = await self.drain_all_messages(ws, timeout=2.0)
 
                 # Check if first message is in history
                 all_content = " ".join(m.get("content", "") for m in history_messages)
                 # Note: History replay format might vary, just check the message exists somewhere
+                assert "First message" in all_content, \
+                    f"Expected 'First message' in history replay. Got: {history_messages}"
 
-                # Send second message
+                # Now send second message
                 await ws.send("Second message")
                 new_messages = await self.receive_until_finish(ws)
 
                 # Should see second message
-                assert any("Second message" in m.get("content", "") for m in new_messages)
+                assert any("Second message" in m.get("content", "") for m in new_messages), \
+                    f"Expected 'Second message' in new messages. Got: {new_messages}"
 
         finally:
             if proc:

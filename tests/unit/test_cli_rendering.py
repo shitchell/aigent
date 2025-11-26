@@ -54,16 +54,27 @@ class TestCLIRendering:
         # Mock ready_for_input event
         ready_event = asyncio.Event()
 
-        # Capture stdout
-        captured_writes = []
-        with patch('sys.stdout.write', side_effect=lambda x: captured_writes.append(x)):
-            with patch('sys.stdout.flush'):
-                await ws_listener(mock_ws, mock_config, ready_event)
+        # Capture print_formatted_text calls
+        captured_prints = []
+        def capture_print(*args, **kwargs):
+            # Extract just the text content
+            text = args[0] if args else ""
+            if hasattr(text, '__html__'):
+                # It's an HTML object, extract the actual text
+                import re
+                text = re.sub(r'<[^>]+>', '', str(text))
+            captured_prints.append(str(text))
+
+        with patch('prompt_toolkit.print_formatted_text', side_effect=capture_print):
+            await ws_listener(mock_ws, mock_config, ready_event)
 
         # Should have buffered tokens and written them together
-        # Not 5 individual writes
-        assert len(captured_writes) <= 2  # At most: buffered tokens + newline
-        assert ''.join(captured_writes).strip() == "Hello"
+        # Not 5 individual writes for each character
+        # We expect at most 2 calls: the buffered "Hello" and possibly a newline
+        assert len(captured_prints) <= 2, f"Too many print calls: {captured_prints}"
+        # Join and strip to get the actual content
+        output = ''.join(captured_prints).strip()
+        assert output == "Hello", f"Expected 'Hello', got '{output}'"
 
     @pytest.mark.asyncio
     async def test_ready_for_input_synchronization(self):
@@ -82,10 +93,8 @@ class TestCLIRendering:
         ready_event = asyncio.Event()
         ready_event.clear()  # Start with not ready
 
-        with patch('sys.stdout.write'):
-            with patch('sys.stdout.flush'):
-                with patch('builtins.print'):
-                    await ws_listener(mock_ws, mock_config, ready_event)
+        with patch('prompt_toolkit.print_formatted_text'):
+            await ws_listener(mock_ws, mock_config, ready_event)
 
         # Event should be set after FINISH
         assert ready_event.is_set()
@@ -108,13 +117,16 @@ class TestCLIRendering:
 
         ready_event = asyncio.Event()
 
-        captured_writes = []
-        with patch('sys.stdout.write', side_effect=lambda x: captured_writes.append(x)):
-            with patch('sys.stdout.flush'):
-                with patch('builtins.print'):
-                    await ws_listener(mock_ws, mock_config, ready_event)
+        captured_prints = []
+        def capture_print(*args, **kwargs):
+            # Capture raw text as it would be printed
+            text = args[0] if args else ""
+            captured_prints.append(str(text))
 
-        output = ''.join(captured_writes)
+        with patch('prompt_toolkit.print_formatted_text', side_effect=capture_print):
+            await ws_listener(mock_ws, mock_config, ready_event)
+
+        output = ''.join(captured_prints)
 
         # Check for various ANSI patterns
         assert '\x1b[' not in output, "Found ANSI escape sequence"
@@ -147,16 +159,27 @@ class TestCLIRendering:
         ready_event = asyncio.Event()
 
         captured_prints = []
-        with patch('builtins.print', side_effect=lambda *args, **kwargs: captured_prints.append(args)):
-            with patch('sys.stdout.write'):
-                with patch('sys.stdout.flush'):
-                    await ws_listener(mock_ws, mock_config, ready_event)
+        def capture_print(*args, **kwargs):
+            # Extract text content, handling HTML objects
+            text = args[0] if args else ""
+            captured_prints.append(str(text))
+
+        with patch('prompt_toolkit.print_formatted_text', side_effect=capture_print):
+            await ws_listener(mock_ws, mock_config, ready_event)
 
         # Check tool output format
-        tool_start = captured_prints[0][0] if captured_prints else ""
+        # We should have at least 3 prints: tool start, tool end, and the empty newline
+        assert len(captured_prints) >= 3, f"Expected at least 3 prints, got {len(captured_prints)}: {captured_prints}"
+
+        # First should be the tool start with yellow HTML formatting
+        tool_start = captured_prints[0]
         assert "🛠" in tool_start
         assert "fs_read" in tool_start
         assert "path='/test/file.py'" in tool_start
+
+        # Second should be the tool end with grey HTML formatting
+        tool_end = captured_prints[1]
+        assert "File contents here" in tool_end
 
     @pytest.mark.asyncio
     async def test_approval_request_sets_ready(self):
@@ -183,10 +206,8 @@ class TestCLIRendering:
         ready_event = asyncio.Event()
         ready_event.clear()
 
-        with patch('builtins.print'):
-            with patch('sys.stdout.write'):
-                with patch('sys.stdout.flush'):
-                    await ws_listener(mock_ws, mock_config, ready_event)
+        with patch('prompt_toolkit.print_formatted_text'):
+            await ws_listener(mock_ws, mock_config, ready_event)
 
         # Should be ready for input after approval request
         assert ready_event.is_set()
