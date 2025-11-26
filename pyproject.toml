@@ -35,6 +35,8 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-playwright>=0.4.0",
+    "pexpect>=4.8.0",
+    "pyte>=0.8.0",
     "mypy>=1.7.0",
     "pydocstyle>=6.3.0",
     "pylint>=3.0.0",
@@ -120,6 +122,7 @@ module = [
     "dotenv.*",
     "rich.*",
     "pexpect.*",
+    "pyte.*",
     "playwright.*"
 ]
 ignore_missing_imports = true
