@@ -37,7 +37,7 @@ def start_server(host: str, port: int, yolo: bool):
     Popen(cmd, stdout=DEVNULL, stderr=DEVNULL, start_new_session=True)
 
 
-async def ws_listener(ws, profile_config, ready_for_input: asyncio.Event):
+async def ws_listener(ws, profile_config, ready_for_input: asyncio.Event, this_user_id: str = "cli-user"):
     """
     WebSocket listener that receives events and prints them.
     Buffers tokens to avoid excessive print_formatted_text calls.
@@ -45,6 +45,12 @@ async def ws_listener(ws, profile_config, ready_for_input: asyncio.Event):
     Note: We buffer tokens because calling print_formatted_text() for each individual
     token causes patch_stdout() to create excessive blank lines and cursor movements.
     By batching tokens, we dramatically reduce terminal control sequences.
+
+    Args:
+        ws: WebSocket connection
+        profile_config: Profile configuration object
+        ready_for_input: Event to signal when prompt should be active
+        this_user_id: The user ID for this CLI client (to distinguish from other clients)
     """
     from prompt_toolkit import print_formatted_text
     from prompt_toolkit.formatted_text import HTML
@@ -95,6 +101,15 @@ async def ws_listener(ws, profile_config, ready_for_input: asyncio.Event):
                     if len(content) > 500:
                         content = content[:500] + "..."
                     print_formatted_text(HTML(f"<grey>   {content}</grey>"))
+
+                elif event_type == EventType.USER_INPUT:
+                    # Another client sent a message - clear ready_for_input to pause the prompt
+                    # This prevents patch_stdout() conflicts when printing the response
+                    sender_id = metadata.get("user_id", "unknown")
+                    if sender_id != this_user_id:
+                        # Message from another client - pause our prompt
+                        ready_for_input.clear()
+                        print_formatted_text(HTML(f"<cyan>[{sender_id}]</cyan> {content}"))
 
                 elif event_type == EventType.ERROR:
                     print_formatted_text(HTML(f"<red>Error: {content}</red>"))
@@ -147,7 +162,9 @@ async def run_cli(args):
         # Default to ephemeral/random session
         session_id = f"cli-{uuid.uuid4().hex[:8]}"
 
-    ws_url = f"ws://{host}:{port}/ws/chat/{session_id}?profile={args.profile}&user_id=cli-user"
+    # Generate unique user ID for this CLI instance
+    user_id = f"cli-{uuid.uuid4().hex[:8]}"
+    ws_url = f"ws://{host}:{port}/ws/chat/{session_id}?profile={args.profile}&user_id={user_id}"
 
     # 1. Auto-Discovery / Start Server
     if hasattr(args, "replace") and args.replace:
@@ -176,7 +193,7 @@ async def run_cli(args):
             print_formatted_text(HTML("<green>Connected to Aigent Server.</green>"))
 
             # Start Listener
-            listener = asyncio.create_task(ws_listener(ws, config, ready_for_input))
+            listener = asyncio.create_task(ws_listener(ws, config, ready_for_input, user_id))
 
             # Setup Prompt
             slash_completer = WordCompleter(get_command_names(), ignore_case=True)
