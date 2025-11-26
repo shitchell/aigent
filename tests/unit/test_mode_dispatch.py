@@ -47,9 +47,9 @@ class TestModeDispatch:
 
     @pytest.mark.asyncio
     async def test_mode_dispatch_tui(self) -> None:
-        """Test that --tui flag dispatches to TUI stub.
+        """Test that --tui flag dispatches to TUI.
 
-        When args.tui is True, run_cli should error (TUI not implemented).
+        When args.tui is True, run_cli should call run_tui.
         """
         from aigent.interfaces.cli import run_cli
 
@@ -60,15 +60,12 @@ class TestModeDispatch:
         mock_args.lock = False
         mock_args.session = None
 
-        # Mock sys.exit to capture the error
-        with patch('sys.stderr.write') as mock_stderr:
-            with patch('sys.exit') as mock_exit:
-                await run_cli(mock_args)
+        # Mock run_tui (patch where it's imported in cli.py)
+        with patch('aigent.interfaces.tui.run_tui', new_callable=AsyncMock) as mock_run_tui:
+            await run_cli(mock_args)
 
-                # Should have written error and exited
-                mock_stderr.assert_called_once()
-                assert "TUI mode not implemented" in mock_stderr.call_args[0][0]
-                mock_exit.assert_called_once_with(1)
+            # Should have called run_tui
+            mock_run_tui.assert_called_once_with(mock_args)
 
     @pytest.mark.asyncio
     async def test_default_mode(self) -> None:
