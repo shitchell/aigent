@@ -279,11 +279,20 @@ async def run_repl(args: Any) -> None:
     base_url = f"http://{host}:{port}"
 
     # Determine session ID
+    should_lock = False
+    show_warning = False
+
     if hasattr(args, "session") and args.session:
         session_id = args.session
-        # Print warning when using --session with REPL (deferred to Phase 2)
+        show_warning = True  # Warn about shared session mode
     else:
         session_id = f"cli-{uuid.uuid4().hex[:8]}"
+        should_lock = True  # Lock new sessions by default in REPL
+
+    # Check for explicit --lock flag (for TUI compatibility)
+    if hasattr(args, "lock") and args.lock:
+        should_lock = True
+        show_warning = False  # No warning if explicitly locked
 
     # Generate unique user ID
     user_id = f"cli-{uuid.uuid4().hex[:8]}"
@@ -318,6 +327,24 @@ async def run_repl(args: Any) -> None:
         async with websockets.connect(ws_url) as ws:
             sys.__stdout__.write(colorize("Connected to Aigent Server.\n", "green"))
             sys.__stdout__.flush()
+
+            # Send lock request if needed
+            if should_lock:
+                lock_msg = json.dumps({"type": "lock_session"})
+                await ws.send(lock_msg)
+
+            # Send ephemeral flag if set
+            if hasattr(args, "ephemeral") and args.ephemeral:
+                ephemeral_msg = json.dumps({"type": "set_ephemeral", "ephemeral": True})
+                await ws.send(ephemeral_msg)
+
+            # Show warning for shared session mode
+            if show_warning:
+                sys.__stdout__.write(colorize(
+                    "Warning: Shared session mode - incoming messages from other clients may cause display issues.\n",
+                    "yellow"
+                ))
+                sys.__stdout__.flush()
 
             # Start background listener
             listener = asyncio.create_task(

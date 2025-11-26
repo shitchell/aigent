@@ -54,8 +54,8 @@ def entry_point() -> None:
     interface_group.add_argument("--tui", action="store_true", help="Use rich TUI interface (not yet implemented)")
 
     # Session behavior flags
-    chat_parser.add_argument("--ephemeral", action="store_true", help="Session not saved to disk (implementation deferred)")
-    chat_parser.add_argument("--lock", action="store_true", help="Lock session to prevent other clients (implementation deferred)")
+    chat_parser.add_argument("--ephemeral", action="store_true", help="Session not saved to disk, deleted on disconnect")
+    chat_parser.add_argument("--lock", action="store_true", help="Lock session to prevent other clients from connecting")
 
     # Serve Command (Web Daemon)
     serve_parser = subparsers.add_parser("serve", help="Start the API/Web daemon")

@@ -28,7 +28,13 @@ class ConnectionManager:
         # session_id -> Lock (to prevent concurrent engine runs in same session)
         self.locks: Dict[str, asyncio.Lock] = {}
         self.yolo_mode: bool = False
-        
+
+        # Session locking state
+        # session_id -> {"locked": bool, "owner_client_id": str, "ephemeral": bool}
+        self.session_state: Dict[str, Dict[str, Any]] = {}
+        # WebSocket -> client_id mapping
+        self.client_ids: Dict[WebSocket, str] = {}
+
         self.session_manager = SessionManager(SESSIONS_DIR)
         self.shutdown_task: Any = None # asyncio.Task
 
@@ -56,13 +62,39 @@ class ConnectionManager:
             self.shutdown_task = None
             # print("Shutdown cancelled.")
 
-    async def connect(self, websocket: WebSocket, session_id: str, profile_name: str = "default") -> bool:
+    async def connect(self, websocket: WebSocket, session_id: str, profile_name: str = "default", client_id: str = "anon") -> bool:
         self._cancel_shutdown_timer()
-        
+
+        # Check if session is locked
+        if session_id in self.session_state:
+            state = self.session_state[session_id]
+            if state.get("locked", False):
+                owner = state.get("owner_client_id", "unknown")
+                # Accept connection first so we can send error message
+                await websocket.accept()
+                error_event = AgentEvent(
+                    type=EventType.ERROR,
+                    content=f"Session is locked by another client ({owner})"
+                )
+                await websocket.send_text(error_event.to_json())
+                await websocket.close(code=1008, reason="Session locked")
+                return False
+
         await websocket.accept()
         if session_id not in self.active_connections:
             self.active_connections[session_id] = []
         self.active_connections[session_id].append(websocket)
+
+        # Store client_id mapping
+        self.client_ids[websocket] = client_id
+
+        # Initialize session state if needed
+        if session_id not in self.session_state:
+            self.session_state[session_id] = {
+                "locked": False,
+                "owner_client_id": None,
+                "ephemeral": False
+            }
 
         # Initialize Engine if needed
         if session_id not in self.sessions:
@@ -103,18 +135,45 @@ class ConnectionManager:
         return True
 
     def disconnect(self, websocket: WebSocket, session_id: str):
+        # Get client_id before removing from mapping
+        client_id = self.client_ids.get(websocket)
+
+        # Remove from active connections
         if session_id in self.active_connections:
             if websocket in self.active_connections[session_id]:
                 self.active_connections[session_id].remove(websocket)
             if not self.active_connections[session_id]:
-                # Cleanup empty session list?
+                # No more clients in this session
                 del self.active_connections[session_id]
-                pass
-                
+
+                # Check if this was the session owner - unlock it
+                if session_id in self.session_state:
+                    state = self.session_state[session_id]
+                    if state.get("locked") and state.get("owner_client_id") == client_id:
+                        state["locked"] = False
+                        state["owner_client_id"] = None
+                        print(f"Session {session_id} unlocked (owner disconnected)")
+
+                    # If ephemeral, delete the session
+                    if state.get("ephemeral"):
+                        print(f"Deleting ephemeral session {session_id}")
+                        # Clean up session data
+                        if session_id in self.sessions:
+                            del self.sessions[session_id]
+                        if session_id in self.locks:
+                            del self.locks[session_id]
+                        if session_id in self.session_state:
+                            del self.session_state[session_id]
+                        # Don't persist to disk (already handled by not saving)
+
+        # Remove client_id mapping
+        if websocket in self.client_ids:
+            del self.client_ids[websocket]
+
         # Check GLOBAL connections
         total_connections = sum(len(conns) for conns in self.active_connections.values())
         print(f"Connection closed. Total active: {total_connections}")
-        
+
         if total_connections == 0:
             self._start_shutdown_timer()
 
@@ -208,24 +267,81 @@ async def get_stats():
 
 @app.websocket("/ws/chat/{session_id}")
 async def websocket_endpoint(
-    websocket: WebSocket, 
+    websocket: WebSocket,
     session_id: str,
     user_id: str = Query("anon"),
     profile: str = Query("default")
 ):
-    success = await manager.connect(websocket, session_id, profile)
+    success = await manager.connect(websocket, session_id, profile, client_id=user_id)
     if not success:
         return
-    
+
     try:
         while True:
             data = await websocket.receive_text()
-            
+
             # Determine if it's a chat message or a control message (JSON)
             try:
                 msg = json.loads(data)
                 if isinstance(msg, dict):
-                    if msg.get("type") == "approval_response":
+                    if msg.get("type") == "lock_session":
+                        # Lock the session for this client
+                        if session_id in manager.session_state:
+                            state = manager.session_state[session_id]
+                            if not state.get("locked"):
+                                state["locked"] = True
+                                state["owner_client_id"] = user_id
+                                print(f"Session {session_id} locked by {user_id}")
+                                # Send confirmation
+                                ack_event = AgentEvent(
+                                    type=EventType.SYSTEM,
+                                    content="Session locked"
+                                )
+                                await websocket.send_text(ack_event.to_json())
+                            else:
+                                # Already locked
+                                error_event = AgentEvent(
+                                    type=EventType.ERROR,
+                                    content="Session is already locked"
+                                )
+                                await websocket.send_text(error_event.to_json())
+                        continue
+
+                    elif msg.get("type") == "unlock_session":
+                        # Unlock the session (only owner can unlock)
+                        if session_id in manager.session_state:
+                            state = manager.session_state[session_id]
+                            if state.get("locked") and state.get("owner_client_id") == user_id:
+                                state["locked"] = False
+                                state["owner_client_id"] = None
+                                print(f"Session {session_id} unlocked by {user_id}")
+                                ack_event = AgentEvent(
+                                    type=EventType.SYSTEM,
+                                    content="Session unlocked"
+                                )
+                                await websocket.send_text(ack_event.to_json())
+                            else:
+                                error_event = AgentEvent(
+                                    type=EventType.ERROR,
+                                    content="Not authorized to unlock this session"
+                                )
+                                await websocket.send_text(error_event.to_json())
+                        continue
+
+                    elif msg.get("type") == "set_ephemeral":
+                        # Mark session as ephemeral
+                        ephemeral = msg.get("ephemeral", True)
+                        if session_id in manager.session_state:
+                            manager.session_state[session_id]["ephemeral"] = ephemeral
+                            print(f"Session {session_id} ephemeral mode: {ephemeral}")
+                            ack_event = AgentEvent(
+                                type=EventType.SYSTEM,
+                                content=f"Session ephemeral mode: {ephemeral}"
+                            )
+                            await websocket.send_text(ack_event.to_json())
+                        continue
+
+                    elif msg.get("type") == "approval_response":
                         # Handle Approval
                         engine = manager.sessions[session_id]
                         req_id = msg.get("request_id")
@@ -241,7 +357,7 @@ async def websocket_endpoint(
                                 engine.history = [engine.history[0]]
                             # Broadcast confirmation
                             # We don't have a generic "System Message" event type in schema yet?
-                            # Let's use ERROR type for visibility or create SYSTEM type. 
+                            # Let's use ERROR type for visibility or create SYSTEM type.
                             # We have EventType.SYSTEM defined in schemas.py!
                             await manager.broadcast(session_id, AgentEvent(type=EventType.SYSTEM, content="History reset.").to_json())
                         continue
@@ -279,16 +395,22 @@ async def process_chat_message(session_id: str, user_input: str, user_name: str 
     lock = manager.locks.get(session_id)
     if not lock:
         return
-        
+
     # Acquire lock to ensure we don't run multiple turns at once
     async with lock:
         try:
             async for event in engine.stream(user_input, user_name=user_name):
                 await manager.broadcast(session_id, event.to_json())
-            
-            # Save State
-            await manager.session_manager.save_session(session_id, engine.profile.name, engine.history)
-            
+
+            # Save State (unless ephemeral)
+            if session_id in manager.session_state:
+                state = manager.session_state[session_id]
+                if not state.get("ephemeral", False):
+                    await manager.session_manager.save_session(session_id, engine.profile.name, engine.history)
+            else:
+                # No state info, save by default
+                await manager.session_manager.save_session(session_id, engine.profile.name, engine.history)
+
         except Exception as e:
             print(f"Error in chat processing: {e}")
             error_event = AgentEvent(type=EventType.ERROR, content=str(e))
