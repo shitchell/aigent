@@ -25,8 +25,8 @@ from aigent.interfaces.commands import get_command_names, handle_command, Comman
 from aigent.server.lifecycle import kill_server_process
 
 # Default mode for `aigent chat` with no flags
-# Change this to "tui" once TUI is vetted
-DEFAULT_MODE: str = "repl"
+# Changed to "tui" after comprehensive testing and verification
+DEFAULT_MODE: str = "tui"
 
 # Shared State
 CLIENT_STATE = {

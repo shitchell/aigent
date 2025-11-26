@@ -18,10 +18,10 @@ class TestModeDispatch:
     """Test suite for CLI mode dispatcher."""
 
     def test_default_mode_constant(self) -> None:
-        """Test that DEFAULT_MODE is defined and set to 'repl'."""
+        """Test that DEFAULT_MODE is defined and set to 'tui'."""
         from aigent.interfaces.cli import DEFAULT_MODE
 
-        assert DEFAULT_MODE == "repl", "DEFAULT_MODE should be 'repl' initially"
+        assert DEFAULT_MODE == "tui", "DEFAULT_MODE should be 'tui' after testing and verification"
 
     @pytest.mark.asyncio
     async def test_mode_dispatch_repl(self) -> None:
@@ -82,12 +82,12 @@ class TestModeDispatch:
         mock_args.lock = False
         mock_args.session = None
 
-        # Since DEFAULT_MODE is "repl", it should call run_repl
-        with patch('aigent.interfaces.repl.run_repl', new_callable=AsyncMock) as mock_run_repl:
+        # Since DEFAULT_MODE is "tui", it should call run_tui
+        with patch('aigent.interfaces.tui.run_tui', new_callable=AsyncMock) as mock_run_tui:
             await run_cli(mock_args)
 
-            # Should have called run_repl (since DEFAULT_MODE is "repl")
-            mock_run_repl.assert_called_once_with(mock_args)
+            # Should have called run_tui (since DEFAULT_MODE is "tui")
+            mock_run_tui.assert_called_once_with(mock_args)
 
     @pytest.mark.asyncio
     async def test_lock_session_mutual_exclusion(self) -> None:

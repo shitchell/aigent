@@ -50,8 +50,8 @@ def entry_point() -> None:
 
     # Interface mode flags
     interface_group = chat_parser.add_mutually_exclusive_group()
-    interface_group.add_argument("--repl", action="store_true", help="Use simple REPL interface (default)")
-    interface_group.add_argument("--tui", action="store_true", help="Use rich TUI interface (not yet implemented)")
+    interface_group.add_argument("--repl", action="store_true", help="Use simple REPL interface")
+    interface_group.add_argument("--tui", action="store_true", help="Use rich TUI interface (default)")
 
     # Session behavior flags
     chat_parser.add_argument("--ephemeral", action="store_true", help="Session not saved to disk, deleted on disconnect")
