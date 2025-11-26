@@ -1,3 +1,12 @@
+"""CLI interface dispatcher and legacy prompt_toolkit implementation.
+
+This module contains:
+1. Mode dispatcher for REPL vs TUI
+2. Legacy prompt_toolkit-based CLI (run_cli_prompt_toolkit)
+
+The dispatcher allows easy switching between interface modes.
+"""
+
 import asyncio
 import sys
 import json
@@ -8,12 +17,16 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.completion import WordCompleter
-
+from typing import Any
 
 from aigent.core.profiles import ProfileManager
 from aigent.core.schemas import EventType
 from aigent.interfaces.commands import get_command_names, handle_command, CommandContext
 from aigent.server.lifecycle import kill_server_process
+
+# Default mode for `aigent chat` with no flags
+# Change this to "tui" once TUI is vetted
+DEFAULT_MODE: str = "repl"
 
 # Shared State
 CLIENT_STATE = {
@@ -157,7 +170,15 @@ async def ws_listener(ws, profile_config, ready_for_input: asyncio.Event, this_u
         print_formatted_text(HTML("<red>Connection to server lost.</red>"))
         pass
 
-async def run_cli(args):
+async def run_cli_prompt_toolkit(args: Any) -> None:
+    """Run the legacy prompt_toolkit-based CLI.
+
+    This is the original CLI implementation using prompt_toolkit.
+    Kept for backwards compatibility.
+
+    Args:
+        args: Parsed command-line arguments.
+    """
     pm = ProfileManager()
     config = pm.config
 
@@ -270,3 +291,37 @@ async def run_cli(args):
 
     except Exception as e:
         print(f"Error: {e}")
+
+
+async def run_cli(args: Any) -> None:
+    """CLI mode dispatcher.
+
+    Routes to the appropriate interface based on args.mode.
+    Handles --repl, --tui flags and DEFAULT_MODE.
+
+    Args:
+        args: Parsed command-line arguments.
+    """
+    # Validate mutually exclusive flags
+    if hasattr(args, "lock") and hasattr(args, "session"):
+        if args.lock and args.session:
+            sys.stderr.write("Error: --lock and --session are mutually exclusive\n")
+            sys.exit(1)
+
+    # Determine mode
+    mode = DEFAULT_MODE
+    if hasattr(args, "repl") and args.repl:
+        mode = "repl"
+    elif hasattr(args, "tui") and args.tui:
+        mode = "tui"
+
+    # Route to appropriate interface
+    if mode == "repl":
+        from aigent.interfaces.repl import run_repl
+        await run_repl(args)
+    elif mode == "tui":
+        sys.stderr.write("TUI mode not implemented yet\n")
+        sys.exit(1)
+    else:
+        # Fallback to legacy prompt_toolkit mode
+        await run_cli_prompt_toolkit(args)

@@ -48,6 +48,15 @@ def entry_point() -> None:
     chat_parser.add_argument("--yolo", action="store_true", help="Disable all permission checks (Danger!)")
     chat_parser.add_argument("--replace", action="store_true", help="Kill existing server and start a new one")
 
+    # Interface mode flags
+    interface_group = chat_parser.add_mutually_exclusive_group()
+    interface_group.add_argument("--repl", action="store_true", help="Use simple REPL interface (default)")
+    interface_group.add_argument("--tui", action="store_true", help="Use rich TUI interface (not yet implemented)")
+
+    # Session behavior flags
+    chat_parser.add_argument("--ephemeral", action="store_true", help="Session not saved to disk (implementation deferred)")
+    chat_parser.add_argument("--lock", action="store_true", help="Lock session to prevent other clients (implementation deferred)")
+
     # Serve Command (Web Daemon)
     serve_parser = subparsers.add_parser("serve", help="Start the API/Web daemon")
     serve_parser.add_argument("--host", type=str, default=config.server.host)
