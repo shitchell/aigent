@@ -52,7 +52,27 @@ We are on `feat/cleanup-unified-architecture`. This branch already has the test 
 
 ---
 
-## Phase 6: Finalize for Merge
+## Phase 6: Fix Shared Session CLI Bug
+
+**Bug:** When CLI is connected to a shared session with the web interface:
+1. Start session in web interface
+2. Copy session ID, connect CLI to same session
+3. Send message from CLI - works fine
+4. Send message from WEB interface
+5. **BUG:** On CLI, the web user's message prints then gets deleted in chunks
+6. The agent's response also prints then gets deleted in chunks
+
+**Steps:**
+- [ ] Reproduce the bug
+- [ ] Debug: Add logging to `ws_listener()` to see what events/sequences are received
+- [ ] Identify root cause (likely `ready_for_input` or event handling for external messages)
+- [ ] Fix the issue
+- [ ] Test: Verify shared sessions work correctly CLI↔Web
+- [ ] Run full test suite to ensure no regressions
+
+---
+
+## Phase 7: Finalize for Merge
 
 - [ ] Untrack `_work/` directory: `git rm -r --cached _work/`
 - [ ] Add `_work/` to `.gitignore`
