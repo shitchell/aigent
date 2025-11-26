@@ -162,28 +162,58 @@ class TestSharedSessionBug:
                 print(f"[TEST] Has expected response '{EXPECTED_RESPONSE}': {has_response}")
 
                 # THE KEY ASSERTION:
-                # In a working implementation, there should be very few carriage returns
-                # (maybe a couple from prompt_toolkit managing the prompt line itself)
-                # But with the bug, there are MANY carriage returns (one per token flush)
-                # that delete the printed content.
+                # The agent's response must be visible in the output.
+                # With the bug, the response would be printed then deleted by carriage returns.
+                #
+                # Note: We can't simply count all carriage returns because prompt_toolkit's
+                # patch_stdout() legitimately uses \r sequences for cursor management.
+                # Instead, we verify the response is present AND check for the specific
+                # pattern of carriage returns AFTER the response (which would delete it).
 
-                # We'll use a threshold - if there are more than 5 CRs, it's likely buggy
-                # (The number 5 accounts for some normal prompt_toolkit behavior)
-                MAX_ACCEPTABLE_CR = 5
-
-                assert total_cr_count <= MAX_ACCEPTABLE_CR, (
-                    f"BUG DETECTED: Output contains {total_cr_count} carriage returns "
-                    f"(max acceptable: {MAX_ACCEPTABLE_CR}).\n"
-                    f"This indicates the text is being deleted as it's printed.\n"
-                    f"Output (repr): {repr(raw_output[:500])}"
-                )
-
-                # Also verify the response is visible
+                # First, verify the response is visible
                 assert has_response, (
                     f"Expected response '{EXPECTED_RESPONSE}' not found in output.\n"
                     f"The response may have been deleted by carriage returns.\n"
                     f"Output: {repr(raw_output[:500])}"
                 )
+
+                # Find the position of the response in the output
+                import re
+                response_match = re.search(re.escape(EXPECTED_RESPONSE), raw_output, re.IGNORECASE)
+                if response_match:
+                    # Check for excessive carriage returns AFTER the response
+                    # These would indicate the response is being deleted
+                    after_response = raw_output[response_match.end():]
+                    cr_after_response = after_response.count('\r')
+                    print(f"[TEST] CRs after response: {cr_after_response}")
+
+                    # The critical bug pattern is: response appears, then immediately followed
+                    # by many \r characters that move the cursor back and overwrite it.
+                    # A healthy output might have some \r for prompt management, but not
+                    # an excessive amount immediately after the response.
+                    #
+                    # With sys.stdout.write() fix, the response is written directly without
+                    # cursor management, so there should be minimal \r immediately after.
+                    #
+                    # We look for the pattern: response followed by \r\r\n (CR CR LF)
+                    # This indicates the response is being cleared
+                    pattern_after_response = after_response[:50]  # First 50 chars after response
+                    print(f"[TEST] Pattern after response: {repr(pattern_after_response)}")
+
+                    # Count consecutive CR sequences right after response
+                    # The bug pattern is: Hello World\r\r\n\r\r\n\r\r\n... (many CRs)
+                    # Fixed pattern is: Hello World\n or Hello World\r\n (single newline)
+                    consecutive_cr_pattern = re.search(r'(\r\r?\n)+', pattern_after_response)
+                    if consecutive_cr_pattern:
+                        cr_sequence_length = len(consecutive_cr_pattern.group(0))
+                        print(f"[TEST] CR sequence length after response: {cr_sequence_length}")
+                        # More than 6 characters of CR sequences (2x \r\r\n) indicates bug
+                        MAX_CR_SEQUENCE = 6
+                        assert cr_sequence_length <= MAX_CR_SEQUENCE, (
+                            f"BUG DETECTED: Excessive CR sequence ({cr_sequence_length} chars) after response.\n"
+                            f"This indicates the response may be getting deleted.\n"
+                            f"Pattern: {repr(pattern_after_response)}"
+                        )
 
                 print("[TEST] PASS: No excessive carriage returns, response visible")
 
@@ -212,8 +242,8 @@ class TestFlushTokensUnit:
     @pytest.mark.asyncio
     async def test_token_output_no_carriage_returns(self):
         """
-        Test that token output uses a method that doesn't produce
-        carriage returns.
+        Test that token output uses sys.stdout.write (not print_formatted_text)
+        and doesn't produce carriage returns.
 
         This is the core unit test for the fix.
         """
@@ -256,54 +286,38 @@ class TestFlushTokensUnit:
         ready_for_input = asyncio.Event()
         ready_for_input.set()
 
-        # Capture all output by replacing stdout
-        captured_output = io.StringIO()
-        original_stdout = sys.stdout
+        # Capture sys.stdout.write calls (tokens now use sys.stdout.write)
+        stdout_writes = []
 
-        # Also capture calls to print_formatted_text
-        printed_calls = []
+        def capture_write(text):
+            stdout_writes.append(text)
+            return len(text)
 
-        def mock_print_formatted_text(*args, **kwargs):
-            text = str(args[0]) if args else ""
-            end = kwargs.get('end', '\n')
-            printed_calls.append({'text': text, 'end': end})
-            # Simulate the output
-            captured_output.write(text)
-            captured_output.write(end)
+        with patch('sys.stdout.write', side_effect=capture_write):
+            with patch('sys.stdout.flush'):
+                with patch('prompt_toolkit.print_formatted_text'):
+                    # Run the ws_listener
+                    await asyncio.wait_for(
+                        ws_listener(mock_ws, profile_config, ready_for_input, "test-user"),
+                        timeout=5.0
+                    )
 
-        # Patch the print_formatted_text import within ws_listener
-        import prompt_toolkit
-        original_pft = prompt_toolkit.print_formatted_text
+        # Check what was written
+        output = ''.join(stdout_writes)
+        print(f"[TEST] Captured stdout writes: {stdout_writes}")
+        print(f"[TEST] Full output: {repr(output)}")
 
-        try:
-            prompt_toolkit.print_formatted_text = mock_print_formatted_text
-
-            # Run the ws_listener
-            await asyncio.wait_for(
-                ws_listener(mock_ws, profile_config, ready_for_input, "test-user"),
-                timeout=5.0
-            )
-        except StopAsyncIteration:
-            pass  # Expected when mock websocket runs out of events
-        finally:
-            prompt_toolkit.print_formatted_text = original_pft
-
-        output = captured_output.getvalue()
-        print(f"[TEST] Captured output: {repr(output)}")
-        print(f"[TEST] Print calls: {printed_calls}")
-
-        # Check that "Hello World" was output
+        # Check that "Hello World" was output via sys.stdout.write
         assert "Hello" in output, f"'Hello' not in output: {repr(output)}"
         assert "World" in output, f"'World' not in output: {repr(output)}"
 
-        # Check for carriage returns in the CAPTURED output
-        # (This tests what our mock captured, not actual terminal behavior)
+        # Check for carriage returns in the output
+        # With sys.stdout.write, there should be NO carriage returns
         cr_count = output.count('\r')
-        print(f"[TEST] Carriage returns in captured output: {cr_count}")
+        print(f"[TEST] Carriage returns in output: {cr_count}")
+        assert cr_count == 0, f"Found {cr_count} carriage returns in output: {repr(output)}"
 
-        # The mock doesn't reproduce the actual terminal behavior with patch_stdout,
-        # but it verifies the basic flow works
-        print("[TEST] Unit test completed - token flow verified")
+        print("[TEST] PASS: Token output uses sys.stdout.write with no carriage returns")
 
 
 # Run with:

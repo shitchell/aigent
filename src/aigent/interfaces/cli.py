@@ -62,8 +62,14 @@ async def ws_listener(ws, profile_config, ready_for_input: asyncio.Event, this_u
     async def flush_tokens():
         nonlocal token_buffer
         if token_buffer:
-            # Print all buffered tokens at once
-            print_formatted_text(''.join(token_buffer), end='')
+            # Print all buffered tokens at once using sys.stdout.write()
+            # We avoid print_formatted_text() here because inside patch_stdout(),
+            # it produces carriage returns (\r) and cursor movements that can
+            # delete previously printed content. This is especially problematic
+            # when receiving tokens for a message initiated by another client
+            # in a shared session.
+            sys.stdout.write(''.join(token_buffer))
+            sys.stdout.flush()
             token_buffer = []
 
     try:
@@ -109,7 +115,10 @@ async def ws_listener(ws, profile_config, ready_for_input: asyncio.Event, this_u
                     if sender_id != this_user_id:
                         # Message from another client - pause our prompt
                         ready_for_input.clear()
-                        print_formatted_text(HTML(f"<cyan>[{sender_id}]</cyan> {content}"))
+                        # Use sys.stdout.write to avoid patch_stdout() cursor management issues
+                        # that cause carriage returns and text deletion
+                        sys.stdout.write(f"\033[36m[{sender_id}]\033[0m {content}\n")
+                        sys.stdout.flush()
 
                 elif event_type == EventType.ERROR:
                     print_formatted_text(HTML(f"<red>Error: {content}</red>"))
@@ -125,7 +134,9 @@ async def ws_listener(ws, profile_config, ready_for_input: asyncio.Event, this_u
                 elif event_type == EventType.FINISH:
                     # End of turn - flush any remaining tokens and add newline
                     await flush_tokens()
-                    print_formatted_text("")  # Newline for next prompt
+                    # Use sys.stdout.write to avoid patch_stdout() cursor issues
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
                     ready_for_input.set()
 
                 elif event_type == EventType.APPROVAL_REQUEST:
