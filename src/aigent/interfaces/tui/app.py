@@ -7,8 +7,9 @@ including WebSocket connection handling, message display, and user input.
 import asyncio
 import json
 import sys
+import time
 from pathlib import Path
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 
 from textual.app import App, ComposeResult
 from textual.containers import ScrollableContainer
@@ -65,6 +66,13 @@ class AigentApp(App[None]):
         self.ws: Optional[WebSocketClientProtocol] = None
         self._listener_task: Optional[asyncio.Task[None]] = None
         self._current_message: Optional[MessageWidget] = None
+
+        # Token batching state for anti-epilepsy streaming
+        self._token_buffer: List[str] = []
+        self._last_ui_update: float = 0.0
+        self._update_interval: float = 0.016  # ~60fps max (16ms)
+        self._pending_update: bool = False
+        self._flush_task: Optional[asyncio.Task[None]] = None
 
     def compose(self) -> ComposeResult:
         """Compose the UI layout.
@@ -161,6 +169,69 @@ class AigentApp(App[None]):
             except Exception as e:
                 chat.add_message(f"Error sending message: {e}", role="system")
 
+    async def _process_token(self, token: str) -> None:
+        """Buffer tokens and batch UI updates for smooth streaming.
+
+        This method implements token batching to prevent epileptic-inducing
+        rapid redraws. Tokens are buffered and flushed to the UI at a
+        maximum rate of ~60fps.
+
+        Args:
+            token: The token to add to the buffer.
+        """
+        self._token_buffer.append(token)
+
+        now = time.monotonic()
+        time_since_last_update = now - self._last_ui_update
+
+        # If enough time has passed since last update, flush immediately
+        if time_since_last_update >= self._update_interval:
+            await self._flush_tokens()
+        # Otherwise, schedule a flush if not already pending
+        elif not self._pending_update:
+            self._pending_update = True
+            delay = self._update_interval - time_since_last_update
+            self._flush_task = asyncio.create_task(
+                self._schedule_flush(delay)
+            )
+
+    async def _schedule_flush(self, delay: float) -> None:
+        """Schedule a token flush after a delay.
+
+        Args:
+            delay: Time in seconds to wait before flushing.
+        """
+        await asyncio.sleep(delay)
+        await self._flush_tokens()
+
+    async def _flush_tokens(self) -> None:
+        """Flush buffered tokens to the UI.
+
+        This method takes all buffered tokens and appends them to the
+        current message widget in one operation, minimizing redraws.
+        """
+        if not self._token_buffer:
+            return
+
+        content = ''.join(self._token_buffer)
+        self._token_buffer.clear()
+        self._pending_update = False
+        self._last_ui_update = time.monotonic()
+
+        # Cancel any pending flush task
+        if self._flush_task and not self._flush_task.done():
+            self._flush_task.cancel()
+            try:
+                await self._flush_task
+            except asyncio.CancelledError:
+                pass
+        self._flush_task = None
+
+        # Append to current message using the chat container's method
+        chat = self.query_one("#chat", ChatContainer)
+        if self._current_message is not None:
+            chat.append_to_current(content)
+
     async def _ws_listener(self) -> None:
         """Listen for WebSocket events and display them.
 
@@ -180,16 +251,19 @@ class AigentApp(App[None]):
                 metadata: Dict[str, Any] = data.get("metadata", {})
 
                 if event_type == EventType.TOKEN:
-                    # Stream tokens to current message
+                    # Stream tokens to current message with batching
                     if self._current_message is None:
                         # Start new assistant message
-                        self._current_message = chat.add_message("", role="assistant")
+                        self._current_message = chat.start_message(role="assistant")
 
-                    # Append token to current message
-                    chat.append_to_last(content)
+                    # Use batched token processing (anti-epilepsy)
+                    await self._process_token(content)
 
                 elif event_type == EventType.FINISH:
+                    # Flush any remaining tokens before marking complete
+                    await self._flush_tokens()
                     # End of assistant message
+                    chat.finish_message()
                     self._current_message = None
 
                 elif event_type == EventType.USER_INPUT:
