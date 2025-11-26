@@ -320,8 +320,8 @@ async def run_cli(args: Any) -> None:
         from aigent.interfaces.repl import run_repl
         await run_repl(args)
     elif mode == "tui":
-        sys.stderr.write("TUI mode not implemented yet\n")
-        sys.exit(1)
+        from aigent.interfaces.tui import run_tui
+        await run_tui(args)
     else:
         # Fallback to legacy prompt_toolkit mode
         await run_cli_prompt_toolkit(args)

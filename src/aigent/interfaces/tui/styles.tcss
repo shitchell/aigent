@@ -1,0 +1,38 @@
+/* Aigent TUI Styles */
+
+/* Chat container takes up most of the screen */
+ChatContainer {
+    height: 1fr;
+    border: solid green;
+    padding: 1;
+}
+
+/* Base message style */
+MessageWidget {
+    padding: 1;
+    margin-bottom: 1;
+}
+
+/* User message styling */
+.user-message {
+    background: $surface;
+    border-left: thick $primary;
+}
+
+/* Assistant message styling */
+.assistant-message {
+    background: $surface-darken-1;
+    border-left: thick $secondary;
+}
+
+/* System message styling */
+.system-message {
+    background: $warning-darken-2;
+    color: $text;
+    text-style: italic;
+}
+
+/* Input widget at bottom */
+Input {
+    dock: bottom;
+}
