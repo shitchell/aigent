@@ -3,36 +3,56 @@
 /* Chat container takes up most of the screen */
 ChatContainer {
     height: 1fr;
-    border: solid green;
+    border: solid $primary;
     padding: 1;
+    scrollbar-gutter: stable;
 }
 
 /* Base message style */
 MessageWidget {
     padding: 1;
     margin-bottom: 1;
+    border-radius: 1;
 }
 
 /* User message styling */
 .user-message {
     background: $surface;
     border-left: thick $primary;
+    color: $text;
 }
 
 /* Assistant message styling */
 .assistant-message {
     background: $surface-darken-1;
-    border-left: thick $secondary;
+    border-left: thick $accent;
+    color: $text;
 }
 
 /* System message styling */
 .system-message {
-    background: $warning-darken-2;
-    color: $text;
+    background: $panel;
+    color: $text-muted;
     text-style: italic;
+    border-left: thick $warning;
 }
 
 /* Input widget at bottom */
 Input {
     dock: bottom;
+    border: tall $primary;
+}
+
+/* Input focus styling */
+Input:focus {
+    border: tall $accent;
+}
+
+/* Scrollbar styling */
+ChatContainer::-webkit-scrollbar-thumb {
+    background: $primary;
+}
+
+ChatContainer::-webkit-scrollbar-thumb:hover {
+    background: $accent;
 }

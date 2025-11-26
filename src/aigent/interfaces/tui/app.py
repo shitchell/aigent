@@ -10,8 +10,10 @@ import sys
 import time
 from pathlib import Path
 from typing import Optional, Any, Dict, List
+from functools import partial
 
 from textual.app import App, ComposeResult
+from textual.command import Hit, Hits, Provider
 from textual.containers import ScrollableContainer
 from textual.widgets import Header, Footer, Input
 import websockets
@@ -20,6 +22,40 @@ from websockets.client import WebSocketClientProtocol
 from aigent.interfaces.tui.widgets.chat import ChatContainer
 from aigent.interfaces.tui.widgets.message import MessageWidget
 from aigent.core.schemas import EventType
+
+
+class AigentCommands(Provider):
+    """Command palette provider for Aigent.
+
+    Provides searchable commands for the command palette (Ctrl+P).
+    """
+
+    async def search(self, query: str) -> Hits:
+        """Search for commands matching query.
+
+        Args:
+            query: The search query string.
+
+        Yields:
+            Matching command hits with scores.
+        """
+        matcher = self.matcher(query)
+
+        commands = [
+            ("Clear Chat", "clear_chat", "Clear all messages from chat"),
+            ("Toggle Lock", "toggle_lock", "Lock/unlock session"),
+            ("Exit", "quit", "Exit the application"),
+        ]
+
+        for name, action, description in commands:
+            score = matcher.match(name)
+            if score > 0:
+                yield Hit(
+                    score,
+                    matcher.highlight(name),
+                    partial(self.app.action, action),
+                    help=description,
+                )
 
 
 class AigentApp(App[None]):
@@ -36,9 +72,11 @@ class AigentApp(App[None]):
     """
 
     CSS_PATH = "styles.tcss"
+    COMMANDS = {AigentCommands}
     BINDINGS = [
         ("ctrl+c", "quit", "Quit"),
         ("ctrl+p", "command_palette", "Commands"),
+        ("ctrl+l", "clear_chat", "Clear"),
     ]
 
     def __init__(
@@ -84,6 +122,18 @@ class AigentApp(App[None]):
         yield ChatContainer(id="chat")
         yield Input(placeholder="Type a message...", id="input")
         yield Footer()
+
+    @property
+    def sub_title(self) -> str:
+        """Get the subtitle for the header with session info.
+
+        Returns:
+            Formatted subtitle string with session ID and lock status.
+        """
+        lock_status = " [locked]" if self.should_lock else ""
+        ephemeral_status = " [ephemeral]" if self.ephemeral else ""
+        session_short = self.session_id[:12] if len(self.session_id) > 12 else self.session_id
+        return f"Session: {session_short}{lock_status}{ephemeral_status}"
 
     async def on_mount(self) -> None:
         """Handle mount event.
@@ -307,11 +357,44 @@ class AigentApp(App[None]):
         except Exception as e:
             chat.add_message(f"Error in listener: {e}", role="system")
 
-    def action_command_palette(self) -> None:
-        """Show command palette.
+    def action_clear_chat(self) -> None:
+        """Clear all messages from chat.
 
-        This action is bound to Ctrl+P. Currently not implemented,
-        reserved for future use.
+        This action is bound to Ctrl+L and is also available from
+        the command palette.
         """
-        # TODO: Implement command palette in Phase 5
-        pass
+        chat = self.query_one("#chat", ChatContainer)
+        chat.remove_children()
+        chat.add_message("Chat cleared.", role="system")
+
+    async def action_toggle_lock(self) -> None:
+        """Toggle session lock.
+
+        This action is available from the command palette. It sends
+        a lock or unlock request to the server.
+        """
+        if not self.ws:
+            return
+
+        try:
+            if self.should_lock:
+                # Unlock the session
+                unlock_msg = json.dumps({"type": "unlock_session"})
+                await self.ws.send(unlock_msg)
+                self.should_lock = False
+                chat = self.query_one("#chat", ChatContainer)
+                chat.add_message("Session unlocked.", role="system")
+            else:
+                # Lock the session
+                lock_msg = json.dumps({"type": "lock_session"})
+                await self.ws.send(lock_msg)
+                self.should_lock = True
+                chat = self.query_one("#chat", ChatContainer)
+                chat.add_message("Session locked.", role="system")
+
+            # Update the header to reflect new lock status
+            header = self.query_one(Header)
+            header.refresh()
+        except Exception as e:
+            chat = self.query_one("#chat", ChatContainer)
+            chat.add_message(f"Error toggling lock: {e}", role="system")
