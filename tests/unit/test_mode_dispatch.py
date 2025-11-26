@@ -104,18 +104,20 @@ class TestModeDispatch:
         mock_args.repl = False
         mock_args.tui = False
 
-        # Mock sys.exit to capture the error
+        # Mock sys.exit to capture the error, and mock TUI as fallback
+        # (in case exit doesn't actually stop execution due to mocking)
         with patch('sys.stderr.write') as mock_stderr:
             with patch('sys.exit') as mock_exit:
-                await run_cli(mock_args)
+                with patch('aigent.interfaces.tui.run_tui', new_callable=AsyncMock):
+                    await run_cli(mock_args)
 
-                # Should have written error and exited
-                mock_stderr.assert_called_once()
-                error_message = mock_stderr.call_args[0][0]
-                assert "--lock" in error_message, "Error should mention --lock"
-                assert "--session" in error_message, "Error should mention --session"
-                assert "mutually exclusive" in error_message, "Error should say 'mutually exclusive'"
-                mock_exit.assert_called_once_with(1)
+                    # Should have written error and exited
+                    mock_stderr.assert_called_once()
+                    error_message = mock_stderr.call_args[0][0]
+                    assert "--lock" in error_message, "Error should mention --lock"
+                    assert "--session" in error_message, "Error should mention --session"
+                    assert "mutually exclusive" in error_message, "Error should say 'mutually exclusive'"
+                    mock_exit.assert_called_once_with(1)
 
     @pytest.mark.asyncio
     async def test_lock_without_session_ok(self) -> None:
