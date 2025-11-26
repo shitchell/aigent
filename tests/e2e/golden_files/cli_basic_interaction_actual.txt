@@ -14,6 +14,22 @@ Starting chat with profile: default
 [0mge "Test confirmed" -- no punctuation and no period.[52D[0m
 [J[?7h[0m[?12l[?25h[?2004l[J[0m[?7h[0m[?7h[0mTest confirmed
 [0m[J[0m[?7h[0m[?7h[0m
+[0m[J[0m[?7h[0m[?7h[0mTest confirmed
+[0m[J[0m[?7h[0m[?7h[0m
+[0m[J[0m[?7h[0m[?7h[0mTest confirmed
+[0m[J[0m[?7h[0m[?7h[0m
+[0m[J[0m[?7h[0m[?7h[0mTest confirmed
+[0m[J[0m[?7h[0m[?7h[0m
+[0m[J[0m[?7h[0m[?7h[0mTest confirmed
+[0m[J[0m[?7h[0m[?7h[0m
+[0m[J[0m[?7h[0m[?7h[0mTest confirmed
+[0m[J[0m[?7h[0m[?7h[0m
+[0m[J[0m[?7h[0m[?7h[0mTest confirmed
+[0m[J[0m[?7h[0m[?7h[0m
+[0m[J[0m[?7h[0m[?7h[0mTest confirmed
+[0m[J[0m[?7h[0m[?7h[0m
+[0m[J[0m[?7h[0m[?7h[0mTest confirmed
+[0m[J[0m[?7h[0m[?7h[0m
 [0m[J[0m[?7h[0m[?7h[0m
 [0m[0m[?7h[0mTest[0m[0m[?7h[0m confirmed[0m[0m[?7h[0m
 [0m[?2004h[?25l[0m[?7l[0m[J[0;1m> [0m/exit[7D[7C[?7h[0m[?12l[?25h[?25l[?7l[7D[0m[J[0;1m> [0m/exit[7D[0m

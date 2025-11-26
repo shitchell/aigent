@@ -8,6 +8,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line("markers", "live: Tests that require live API access (costs money)")
+    config.addinivalue_line("markers", "e2e: End-to-end tests that require full server setup")
+
+
 def pytest_addoption(parser):
     parser.addoption(
         "--live", action="store_true", default=False, help="Run live API tests"
@@ -18,15 +25,19 @@ def pytest_addoption(parser):
     parser.addoption(
         "--run-e2e", action="store_true", default=False, help="Alias for --e2e"
     )
+    parser.addoption(
+        "--all", action="store_true", default=False, help="Run ALL tests including e2e and live"
+    )
 
 def pytest_collection_modifyitems(config, items):
-    skip_live = pytest.mark.skip(reason="need --live option to run")
-    skip_e2e = pytest.mark.skip(reason="need --e2e or --run-e2e option to run")
+    run_all = config.getoption("--all")
+    skip_live = pytest.mark.skip(reason="need --live or --all option to run")
+    skip_e2e = pytest.mark.skip(reason="need --e2e, --run-e2e, or --all option to run")
 
     for item in items:
-        if "live" in item.keywords and not config.getoption("--live"):
+        if "live" in item.keywords and not (config.getoption("--live") or run_all):
             item.add_marker(skip_live)
-        if "e2e" in item.keywords and not (config.getoption("--e2e") or config.getoption("--run-e2e")):
+        if "e2e" in item.keywords and not (config.getoption("--e2e") or config.getoption("--run-e2e") or run_all):
             item.add_marker(skip_e2e)
 
 

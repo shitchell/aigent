@@ -20,8 +20,15 @@ SERVER_HOST = "localhost"
 SERVER_PORT = 8000
 
 
+@pytest.mark.skip(reason="asyncio.subprocess does not emulate PTY properly - CLI waits forever for terminal that never exists. Use pexpect-based tests (test_cli_golden.py, test_cli_web_sync.py) instead.")
 class TestCLIAsyncio:
-    """Test CLI using asyncio.subprocess for terminal interaction."""
+    """Test CLI using asyncio.subprocess for terminal interaction.
+
+    NOTE: These tests are SKIPPED because asyncio.subprocess does not provide
+    a proper PTY (pseudo-terminal), which the CLI requires for interactive mode.
+    The CLI hangs waiting for terminal input that never arrives because there's
+    no TTY attached. Use pexpect-based tests for proper terminal emulation.
+    """
 
     @pytest.fixture
     async def test_server(self):
