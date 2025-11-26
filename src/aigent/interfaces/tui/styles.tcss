@@ -12,7 +12,6 @@ ChatContainer {
 MessageWidget {
     padding: 1;
     margin-bottom: 1;
-    border-radius: 1;
 }
 
 /* User message styling */
@@ -46,13 +45,4 @@ Input {
 /* Input focus styling */
 Input:focus {
     border: tall $accent;
-}
-
-/* Scrollbar styling */
-ChatContainer::-webkit-scrollbar-thumb {
-    background: $primary;
-}
-
-ChatContainer::-webkit-scrollbar-thumb:hover {
-    background: $accent;
 }

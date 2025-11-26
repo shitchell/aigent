@@ -135,6 +135,17 @@ class AigentApp(App[None]):
         session_short = self.session_id[:12] if len(self.session_id) > 12 else self.session_id
         return f"Session: {session_short}{lock_status}{ephemeral_status}"
 
+    @sub_title.setter
+    def sub_title(self, value: str) -> None:
+        """Setter for sub_title (required by Textual's App.__init__).
+
+        Args:
+            value: The subtitle value (ignored, we compute it dynamically).
+        """
+        # Textual's App.__init__ tries to set this, but we compute it dynamically
+        # So we just ignore the setter
+        pass
+
     async def on_mount(self) -> None:
         """Handle mount event.
 
