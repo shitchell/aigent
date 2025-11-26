@@ -49,6 +49,15 @@ Remove extraneous bugfix attempts from `feat/unified-client-server` while preser
 
 ---
 
+## Phase 6: Finalize for Merge
+
+- [ ] Untrack `_work/` directory: `git rm -r --cached _work/`
+- [ ] Add `_work/` to `.gitignore`
+- [ ] Final commit
+- [ ] Squash merge into `feat/unified-client-server` branch
+
+---
+
 ## What To Keep
 
 | Feature | Commit | Description |
