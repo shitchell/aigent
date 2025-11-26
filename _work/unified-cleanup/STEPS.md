@@ -1,36 +1,37 @@
 # Unified Architecture Cleanup Steps
 
 ## Overview
-Remove extraneous bugfix attempts from `feat/unified-client-server` while preserving real features.
+We are on `feat/cleanup-unified-architecture`. This branch already has the test suite and Codex's fix merged. The goal now is to identify and remove any extraneous bugfix attempts while preserving real features.
 
 ---
 
-## Phase 1: Create Clean Branch
+## Phase 1: Audit Current State
 
-- [ ] Create new branch from unified architecture base: `git checkout -b feat/final-cleanup 8179699`
-
----
-
-## Phase 2: Cherry-Pick Essential Features
-
-- [ ] Server management commands: `git cherry-pick 43294d3`
-- [ ] Ephemeral CLI sessions: `git cherry-pick 1a14f22`
-- [ ] PID discovery via API: `git cherry-pick 931aa16`
-- [ ] Version flag (--version): `git cherry-pick 1af682c`
+- [ ] Review git log to identify commits that are failed bugfix attempts
+- [ ] List files that contain unnecessary changes
+- [ ] Run full test suite to establish baseline: `pytest tests/ --e2e --run-integration -v`
 
 ---
 
-## Phase 3: Apply The Real Fix
+## Phase 2: Remove Extraneous Changes
 
-- [ ] Apply Codex's `ready_for_input` synchronization fix from `codex-cli-chat-messages` branch
-  - Key file: `src/aigent/interfaces/cli.py`
-  - Added `ready_for_input = asyncio.Event()` for flow control
-  - Ensures prompt only appears after FINISH event
-  - `patch_stdout()` scoped only around prompt operations
+- [ ] Remove ANSI prompt instructions from `src/aigent/core/prompts.py` (if present)
+- [ ] Verify no Rich library imports in CLI code
+- [ ] Remove any debug/experimental code
+- [ ] Run tests after each removal: `pytest tests/unit/ -v`
 
 ---
 
-## Phase 4: Verify
+## Phase 3: Verify Core Features Work
+
+- [ ] Test server management commands work
+- [ ] Test ephemeral CLI sessions work
+- [ ] Test version flag works: `aigent --version`
+- [ ] Test `ready_for_input` synchronization is intact
+
+---
+
+## Phase 4: Full Test Suite
 
 - [ ] Run unit tests: `pytest tests/unit/ -v`
 - [ ] Run integration tests: `pytest tests/integration/ --run-integration -v`
