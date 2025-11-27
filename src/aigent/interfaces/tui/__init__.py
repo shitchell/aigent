@@ -113,7 +113,9 @@ async def run_tui(args: Any) -> None:
         ws_url=ws_url,
         session_id=session_id,
         should_lock=should_lock,
-        ephemeral=ephemeral
+        ephemeral=ephemeral,
+        client_id=user_id,
+        cursor_blink=config.tui.cursor_blink
     )
     await app.run_async()
 

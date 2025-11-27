@@ -76,6 +76,10 @@ class ServerConfig(BaseModel):
     port: int = 8000
     static_dir: str = "static"
 
+class TuiConfig(BaseModel):
+    """Configuration for TUI interface settings."""
+    cursor_blink: bool = False
+
 class AgentConfig(BaseModel):
     """
     Global application configuration.
@@ -83,15 +87,18 @@ class AgentConfig(BaseModel):
     default_profile: str = "default"
     plugin_dir: str = "~/.aigent/tools"
     tool_call_preview_length: int = 100
-    
+
     # Server Configuration
     server: ServerConfig = Field(default_factory=ServerConfig)
-    
+
+    # TUI Configuration
+    tui: TuiConfig = Field(default_factory=TuiConfig)
+
     # Security: Path Restrictions
     # List of allowed root directories for file operations.
     # Default is ["."] which resolves to CWD.
     allowed_work_dirs: List[str] = Field(default_factory=lambda: ["."])
-    
+
     # Permission Schemas definitions
     permission_schemas: List[PermissionSchema] = Field(default_factory=lambda: [
         PermissionSchema(name="default", default_policy=PermissionPolicy.ASK, tools={"fs_read": PermissionPolicy.ALLOW})

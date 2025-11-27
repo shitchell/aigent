@@ -120,7 +120,7 @@ class Authorizer:
         request_id = str(uuid.uuid4())
         future = asyncio.Future()
         self.pending_requests[request_id] = future
-        
+
         # Emit Request Event
         # We check if we have a "smart" signature for the prompt UI?
         # For now, just send raw info.
@@ -128,13 +128,13 @@ class Authorizer:
             type=EventType.APPROVAL_REQUEST,
             content=f"Allow {tool_name}?",
             metadata={
-                "tool": tool_name, 
-                "input": input_args, 
+                "tool": tool_name,
+                "input": input_args,
                 "request_id": request_id
             }
         )
         await self.event_callback(event)
-        
+
         try:
             # Wait for response
             decision_data = await future

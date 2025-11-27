@@ -39,10 +39,11 @@ MessageWidget {
 /* Input widget at bottom */
 Input {
     dock: bottom;
-    border: tall $primary;
+    border: solid $primary;
+    margin-bottom: 1;
 }
 
 /* Input focus styling */
 Input:focus {
-    border: tall $accent;
+    border: solid $accent;
 }

@@ -212,10 +212,13 @@ async def ws_listener(
                     sys.__stdout__.flush()
 
                 elif event_type == EventType.FINISH:
-                    # End of turn
+                    # End of turn - ensure all output is complete before showing prompt
                     await flush_tokens()
                     sys.__stdout__.write("\n")
                     sys.__stdout__.flush()
+                    # Small delay to ensure OS has processed all output
+                    # This prevents race conditions where prompt appears before tool output
+                    await asyncio.sleep(0.01)
                     ready_for_input.set()
 
                 elif event_type == EventType.APPROVAL_REQUEST:
@@ -399,6 +402,8 @@ async def run_repl(args: Any) -> None:
                         }
                         await ws.send(json.dumps(msg))
                         CLIENT_STATE["pending_approval_id"] = None
+                        # Clear ready_for_input to wait for tool execution to complete
+                        ready_for_input.clear()
                         continue
 
                     # Handle slash commands

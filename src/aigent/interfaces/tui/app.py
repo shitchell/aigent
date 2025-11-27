@@ -15,13 +15,53 @@ from functools import partial
 from textual.app import App, ComposeResult
 from textual.command import Hit, Hits, Provider
 from textual.containers import ScrollableContainer
+from textual.suggester import Suggester
 from textual.widgets import Header, Footer, Input
 import websockets
 from websockets.client import WebSocketClientProtocol
 
 from aigent.interfaces.tui.widgets.chat import ChatContainer
 from aigent.interfaces.tui.widgets.message import MessageWidget
+from aigent.interfaces.tui.widgets.approval_dialog import ApprovalDialog
 from aigent.core.schemas import EventType
+from aigent.interfaces.commands import get_command_names
+
+
+class SlashCommandSuggester(Suggester):
+    """Suggester for slash command autocomplete.
+
+    This suggester provides autocomplete functionality for slash commands
+    in the TUI input widget. It suggests commands from the command registry
+    when the user types a slash followed by a prefix.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the suggester with known commands."""
+        super().__init__()
+        # Get all known commands from the registry
+        self.commands: List[str] = sorted(get_command_names())
+
+    async def get_suggestion(self, value: str) -> Optional[str]:
+        """Get autocomplete suggestion for the given input value.
+
+        Args:
+            value: The current input value from the user.
+
+        Returns:
+            A matching command string if found, None otherwise.
+        """
+        # Only suggest for slash commands
+        if not value.startswith("/"):
+            return None
+
+        # Find matching commands
+        for cmd in self.commands:
+            # Suggest if cmd starts with value and is not identical
+            if cmd.startswith(value) and cmd != value:
+                return cmd
+
+        # No suggestion for complete commands or unknown prefixes
+        return None
 
 
 class AigentCommands(Provider):
@@ -85,6 +125,8 @@ class AigentApp(App[None]):
         session_id: str,
         should_lock: bool = False,
         ephemeral: bool = False,
+        client_id: Optional[str] = None,
+        cursor_blink: bool = False,
         **kwargs: Any
     ) -> None:
         """Initialize the Aigent TUI application.
@@ -94,6 +136,9 @@ class AigentApp(App[None]):
             session_id: Session ID for the chat session.
             should_lock: Whether to lock the session. Defaults to False.
             ephemeral: Whether session should be ephemeral. Defaults to False.
+            client_id: Client ID for filtering own messages. If None, will try to
+                extract from ws_url query parameters. Defaults to None.
+            cursor_blink: Whether the input cursor should blink. Defaults to False.
             **kwargs: Additional keyword arguments passed to App.
         """
         super().__init__(**kwargs)
@@ -101,9 +146,27 @@ class AigentApp(App[None]):
         self.session_id = session_id
         self.should_lock = should_lock
         self.ephemeral = ephemeral
+        self.cursor_blink = cursor_blink
+
+        # Extract or generate client_id
+        if client_id is None:
+            # Try to extract from ws_url query parameters
+            from urllib.parse import urlparse, parse_qs
+            parsed = urlparse(ws_url)
+            query_params = parse_qs(parsed.query)
+            client_id = query_params.get("user_id", [None])[0]
+
+            # If still None, generate a deterministic ID based on session
+            # This is primarily for testing scenarios
+            if client_id is None:
+                import uuid
+                client_id = f"tui-{uuid.uuid4().hex[:8]}"
+
+        self.client_id = client_id
         self.ws: Optional[WebSocketClientProtocol] = None
         self._listener_task: Optional[asyncio.Task[None]] = None
         self._current_message: Optional[MessageWidget] = None
+        self._current_approval_dialog: Optional[ApprovalDialog] = None
 
         # Token batching state for anti-epilepsy streaming
         self._token_buffer: List[str] = []
@@ -120,7 +183,13 @@ class AigentApp(App[None]):
         """
         yield Header()
         yield ChatContainer(id="chat")
-        yield Input(placeholder="Type a message...", id="input")
+        input_widget = Input(
+            placeholder="Type a message...",
+            id="input",
+            suggester=SlashCommandSuggester()
+        )
+        input_widget.cursor_blink = self.cursor_blink
+        yield input_widget
         yield Footer()
 
     @property
@@ -217,7 +286,9 @@ class AigentApp(App[None]):
         chat = self.query_one("#chat", ChatContainer)
         input_widget = self.query_one("#input", Input)
 
-        # Add user message to chat
+        # Add user message to chat immediately for responsive UX
+        # Note: When the server broadcasts the USER_INPUT event back,
+        # _ws_listener() will filter it out to prevent duplication
         chat.add_message(user_input, role="user")
 
         # Clear input
@@ -328,8 +399,15 @@ class AigentApp(App[None]):
                     self._current_message = None
 
                 elif event_type == EventType.USER_INPUT:
-                    # Another user sent a message
+                    # User message broadcast from server
                     user_id = metadata.get("user_id", "unknown")
+
+                    # Filter out our own messages to prevent duplication
+                    # (we already added our message locally in on_input_submitted)
+                    if self.client_id and user_id == self.client_id:
+                        continue
+
+                    # Display messages from other users
                     chat.add_message(f"[{user_id}] {content}", role="user")
 
                 elif event_type == EventType.SYSTEM:
@@ -360,6 +438,13 @@ class AigentApp(App[None]):
                 elif event_type == EventType.HISTORY_CONTENT:
                     chat.add_message(content, role="assistant")
 
+                elif event_type == EventType.APPROVAL_REQUEST:
+                    # Tool permission request
+                    tool = metadata.get("tool")
+                    args = metadata.get("input")
+                    req_id = metadata.get("request_id")
+                    await self._show_approval_dialog(tool, args, req_id)
+
         except websockets.ConnectionClosed:
             chat.add_message("Connection to server lost.", role="system")
         except asyncio.CancelledError:
@@ -367,6 +452,73 @@ class AigentApp(App[None]):
             pass
         except Exception as e:
             chat.add_message(f"Error in listener: {e}", role="system")
+
+    async def _show_approval_dialog(
+        self,
+        tool_name: str,
+        tool_input: Dict[str, Any],
+        request_id: str
+    ) -> None:
+        """Show approval dialog for tool execution.
+
+        This method displays a modal dialog asking the user to approve
+        or deny a tool execution request.
+
+        Args:
+            tool_name: Name of the tool requesting approval.
+            tool_input: Input arguments for the tool.
+            request_id: Unique identifier for this approval request.
+        """
+        # Create and show the approval dialog
+        dialog = ApprovalDialog(
+            tool_name=tool_name,
+            tool_input=tool_input,
+            request_id=request_id,
+            on_decision=self._send_approval_response
+        )
+        self._current_approval_dialog = dialog
+        await self.push_screen(dialog)
+
+    def _send_approval_response(self, request_id: str, decision: str) -> None:
+        """Send approval response to server.
+
+        This method sends the user's decision about a tool execution
+        request back to the server via WebSocket.
+
+        Args:
+            request_id: Unique identifier for the approval request.
+            decision: The user's decision (allow/deny/always_tool/always_smart).
+        """
+        if not self.ws:
+            return
+
+        response = {
+            "type": "approval_response",
+            "request_id": request_id,
+            "decision": decision
+        }
+
+        # Send the response asynchronously
+        # We need to use asyncio.create_task since this might be called from a sync context
+        asyncio.create_task(self._async_send_approval(response))
+
+        # Clear the current dialog reference
+        self._current_approval_dialog = None
+
+    async def _async_send_approval(self, response: Dict[str, Any]) -> None:
+        """Asynchronously send approval response.
+
+        Helper method to send approval response via WebSocket.
+
+        Args:
+            response: The approval response dictionary to send.
+        """
+        if self.ws:
+            try:
+                await self.ws.send(json.dumps(response))
+            except Exception as e:
+                chat = self.query_one("#chat", ChatContainer)
+                chat.add_message(f"Error sending approval response: {e}", role="system")
 
     def action_clear_chat(self) -> None:
         """Clear all messages from chat.

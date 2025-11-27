@@ -497,7 +497,7 @@
                             aiMsg.content += event.content;
                         } else if (event.type === 'tool_start') {
                             aiMsg.tools.push({
-                                name: event.content.replace("Calling tool: ", ""), 
+                                name: event.content.replace("Calling tool: ", ""),
                                 input: JSON.stringify(event.metadata.input),
                                 result: null
                             });
@@ -516,6 +516,16 @@
                                 responded: false,
                                 decision: null
                             };
+                        } else if (event.type === 'history_content') {
+                            // Add completed message from history
+                            this.messages.push({
+                                id: Date.now(),
+                                role: 'ai',
+                                content: event.content,
+                                tools: [],
+                                loading: false,
+                                approval: null
+                            });
                         }
                     }
 
