@@ -8,6 +8,7 @@ from aigent.interfaces.cli import run_cli
 from aigent.server.api import run_server
 from aigent.server.lifecycle import kill_server_process
 from aigent.core.profiles import ProfileManager, set_config_path
+from aigent.core.logging import configure_from_args, configure_from_config
 
 def entry_point() -> None:
     """
@@ -16,26 +17,50 @@ def entry_point() -> None:
     """
     # Load environment variables from .env file if present
     load_dotenv()
-    
-    # 1. Pre-parse --config argument
+
+    # 1. Pre-parse --config and logging arguments
     # We do this before loading ProfileManager so we can point it to the right file
+    # and configure logging early
     pre_parser = argparse.ArgumentParser(add_help=False)
     pre_parser.add_argument("--config", type=str, help="Path to configuration file")
+    pre_parser.add_argument("--log-level", type=str, help="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+    pre_parser.add_argument("--log-file", type=str, help="Path to log file")
     known_args, _ = pre_parser.parse_known_args()
-    
+
+    # Configure logging from CLI args first (highest precedence)
+    if known_args.log_level or known_args.log_file:
+        configure_from_args(
+            log_level=known_args.log_level,
+            log_file=known_args.log_file
+        )
+
     if known_args.config:
         set_config_path(Path(known_args.config).expanduser().resolve())
-    
+
     # 2. Load Config to get defaults
     pm = ProfileManager()
     pm.load_profiles()
     config = pm.config
 
+    # Configure logging from config file (lower precedence than CLI/env)
+    if config.log.level or config.log.file:
+        configure_from_config(
+            log_level=config.log.level,
+            log_file=config.log.file
+        )
+
     parser = argparse.ArgumentParser(description="Aigent - AI Agent")
-    
+
     # Add --config to main parser for help text consistency (handled above)
     parser.add_argument("--config", type=str, help="Path to configuration file")
-    
+
+    # Logging options (global, handled above but shown in help)
+    parser.add_argument("--log-level", type=str,
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                        help="Log level (default: INFO, or from config/env)")
+    parser.add_argument("--log-file", type=str,
+                        help="Path to log file (logs to stderr by default)")
+
     # Command parameters
     parser.add_argument("--version", action="store_true", help="Show version and exit")
     

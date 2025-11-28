@@ -24,7 +24,11 @@ from aigent.interfaces.tui.widgets.chat import ChatContainer
 from aigent.interfaces.tui.widgets.message import MessageWidget
 from aigent.interfaces.tui.widgets.approval_dialog import ApprovalDialog
 from aigent.core.schemas import EventType
+from aigent.core.logging import get_logger
 from aigent.interfaces.commands import get_command_names
+
+# Module logger
+logger = get_logger(__name__)
 
 
 class SlashCommandSuggester(Suggester):
@@ -175,6 +179,35 @@ class AigentApp(App[None]):
         self._pending_update: bool = False
         self._flush_task: Optional[asyncio.Task[None]] = None
 
+    def _get_chat(self) -> Optional[ChatContainer]:
+        """Safely get the chat widget, searching through the screen stack.
+
+        When a modal screen (like ApprovalDialog) is active, query_one("#chat")
+        fails because it only searches the current screen. This method searches
+        through all screens in the stack to find the ChatContainer.
+
+        Returns:
+            The ChatContainer widget if found, None otherwise.
+        """
+        # First try direct query (works when no modal is active)
+        try:
+            return self.query_one("#chat", ChatContainer)
+        except Exception:
+            pass
+
+        # Search through the screen stack (for when modal is active)
+        for screen in self.screen_stack:
+            try:
+                results = list(screen.query("#chat").results(ChatContainer))
+                if results:
+                    logger.debug("Found #chat on screen %s via stack search", screen)
+                    return results[0]
+            except Exception:
+                continue
+
+        logger.warning("ChatContainer #chat not found in any screen")
+        return None
+
     def compose(self) -> ComposeResult:
         """Compose the UI layout.
 
@@ -221,25 +254,36 @@ class AigentApp(App[None]):
         This is called when the app is mounted. It connects to the
         WebSocket server and starts the listener task.
         """
+        logger.info("TUI app mounting, connecting to %s", self.ws_url)
+
         # Get references to widgets
-        chat = self.query_one("#chat", ChatContainer)
+        chat = self._get_chat()
         input_widget = self.query_one("#input", Input)
+
+        if chat is None:
+            logger.error("ChatContainer not found during mount")
+            return
 
         try:
             # Connect to WebSocket
+            logger.debug("Establishing WebSocket connection")
             self.ws = await websockets.connect(self.ws_url)
+            logger.info("WebSocket connected successfully")
 
             # Send lock request if needed
             if self.should_lock:
+                logger.debug("Sending lock_session request")
                 lock_msg = json.dumps({"type": "lock_session"})
                 await self.ws.send(lock_msg)
 
             # Send ephemeral flag if set
             if self.ephemeral:
+                logger.debug("Sending set_ephemeral request")
                 ephemeral_msg = json.dumps({"type": "set_ephemeral", "ephemeral": True})
                 await self.ws.send(ephemeral_msg)
 
             # Start listener task
+            logger.debug("Starting WebSocket listener task")
             self._listener_task = asyncio.create_task(self._ws_listener())
 
             # Focus input
@@ -249,8 +293,8 @@ class AigentApp(App[None]):
             chat.add_message("Connected to Aigent Server.", role="system")
 
         except Exception as e:
+            logger.error("Failed to connect to server: %s", e, exc_info=True)
             chat.add_message(f"Error connecting to server: {e}", role="system")
-            sys.stderr.write(f"Connection error: {e}\n")
 
     async def on_unmount(self) -> None:
         """Handle unmount event.
@@ -282,9 +326,15 @@ class AigentApp(App[None]):
         if not user_input:
             return
 
+        logger.debug("User submitted input: %s", user_input[:50] + "..." if len(user_input) > 50 else user_input)
+
         # Get references to widgets
-        chat = self.query_one("#chat", ChatContainer)
+        chat = self._get_chat()
         input_widget = self.query_one("#input", Input)
+
+        if chat is None:
+            logger.error("ChatContainer not found during input submission")
+            return
 
         # Add user message to chat immediately for responsive UX
         # Note: When the server broadcasts the USER_INPUT event back,
@@ -298,7 +348,9 @@ class AigentApp(App[None]):
         if self.ws:
             try:
                 await self.ws.send(user_input)
+                logger.debug("Message sent to server")
             except Exception as e:
+                logger.error("Failed to send message: %s", e)
                 chat.add_message(f"Error sending message: {e}", role="system")
 
     async def _process_token(self, token: str) -> None:
@@ -360,7 +412,11 @@ class AigentApp(App[None]):
         self._flush_task = None
 
         # Append to current message using the chat container's method
-        chat = self.query_one("#chat", ChatContainer)
+        chat = self._get_chat()
+        if chat is None:
+            logger.warning("ChatContainer not found during token flush, dropping %d chars", len(content))
+            return
+
         if self._current_message is not None:
             chat.append_to_current(content)
 
@@ -371,9 +427,10 @@ class AigentApp(App[None]):
         the server and updating the chat display accordingly.
         """
         if not self.ws:
+            logger.warning("WebSocket listener started without connection")
             return
 
-        chat = self.query_one("#chat", ChatContainer)
+        logger.info("WebSocket listener started")
 
         try:
             async for message in self.ws:
@@ -381,6 +438,19 @@ class AigentApp(App[None]):
                 event_type: str = data.get("type", "")
                 content: str = data.get("content", "")
                 metadata: Dict[str, Any] = data.get("metadata", {})
+
+                logger.debug("Received event: %s", event_type)
+
+                # Get chat widget for each message (handles modal screen transitions)
+                chat = self._get_chat()
+                if chat is None:
+                    # Chat widget unavailable (possibly during screen transition)
+                    # Log and skip this event - it will be handled when chat is available
+                    logger.warning(
+                        "ChatContainer unavailable, skipping event: %s",
+                        event_type
+                    )
+                    continue
 
                 if event_type == EventType.TOKEN:
                     # Stream tokens to current message with batching
@@ -397,6 +467,7 @@ class AigentApp(App[None]):
                     # End of assistant message
                     chat.finish_message()
                     self._current_message = None
+                    logger.debug("Assistant message finished")
 
                 elif event_type == EventType.USER_INPUT:
                     # User message broadcast from server
@@ -405,15 +476,18 @@ class AigentApp(App[None]):
                     # Filter out our own messages to prevent duplication
                     # (we already added our message locally in on_input_submitted)
                     if self.client_id and user_id == self.client_id:
+                        logger.debug("Filtering out own USER_INPUT message")
                         continue
 
                     # Display messages from other users
+                    logger.debug("Received message from other user: %s", user_id)
                     chat.add_message(f"[{user_id}] {content}", role="user")
 
                 elif event_type == EventType.SYSTEM:
                     chat.add_message(content, role="system")
 
                 elif event_type == EventType.ERROR:
+                    logger.error("Server error event: %s", content)
                     chat.add_message(f"Error: {content}", role="system")
 
                 elif event_type == EventType.TOOL_START:
@@ -424,6 +498,7 @@ class AigentApp(App[None]):
                     ])
                     if len(formatted_args) > 100:
                         formatted_args = formatted_args[:100] + "..."
+                    logger.info("Tool starting: %s", tool_name)
                     chat.add_message(
                         f"🛠  {tool_name}({formatted_args})",
                         role="system"
@@ -433,9 +508,11 @@ class AigentApp(App[None]):
                     tool_content = content
                     if len(tool_content) > 500:
                         tool_content = tool_content[:500] + "..."
+                    logger.debug("Tool ended, output length: %d chars", len(content))
                     chat.add_message(f"   {tool_content}", role="system")
 
                 elif event_type == EventType.HISTORY_CONTENT:
+                    logger.debug("Loading history content")
                     chat.add_message(content, role="assistant")
 
                 elif event_type == EventType.APPROVAL_REQUEST:
@@ -443,15 +520,20 @@ class AigentApp(App[None]):
                     tool = metadata.get("tool")
                     args = metadata.get("input")
                     req_id = metadata.get("request_id")
+                    logger.info("Approval request received: tool=%s, request_id=%s", tool, req_id)
                     await self._show_approval_dialog(tool, args, req_id)
 
         except websockets.ConnectionClosed:
-            chat.add_message("Connection to server lost.", role="system")
+            logger.warning("WebSocket connection closed")
+            if chat := self._get_chat():
+                chat.add_message("Connection to server lost.", role="system")
         except asyncio.CancelledError:
             # Clean shutdown
-            pass
+            logger.debug("WebSocket listener cancelled (clean shutdown)")
         except Exception as e:
-            chat.add_message(f"Error in listener: {e}", role="system")
+            logger.error("Error in WebSocket listener: %s", e, exc_info=True)
+            if chat := self._get_chat():
+                chat.add_message(f"Error in listener: {e}", role="system")
 
     async def _show_approval_dialog(
         self,
@@ -516,9 +598,15 @@ class AigentApp(App[None]):
         if self.ws:
             try:
                 await self.ws.send(json.dumps(response))
+                logger.info(
+                    "Sent approval response: request_id=%s, decision=%s",
+                    response.get("request_id"),
+                    response.get("decision")
+                )
             except Exception as e:
-                chat = self.query_one("#chat", ChatContainer)
-                chat.add_message(f"Error sending approval response: {e}", role="system")
+                logger.error("Failed to send approval response: %s", e)
+                if chat := self._get_chat():
+                    chat.add_message(f"Error sending approval response: {e}", role="system")
 
     def action_clear_chat(self) -> None:
         """Clear all messages from chat.
@@ -526,9 +614,13 @@ class AigentApp(App[None]):
         This action is bound to Ctrl+L and is also available from
         the command palette.
         """
-        chat = self.query_one("#chat", ChatContainer)
+        chat = self._get_chat()
+        if chat is None:
+            logger.warning("Cannot clear chat: ChatContainer not found")
+            return
         chat.remove_children()
         chat.add_message("Chat cleared.", role="system")
+        logger.debug("Chat cleared")
 
     async def action_toggle_lock(self) -> None:
         """Toggle session lock.
@@ -537,27 +629,33 @@ class AigentApp(App[None]):
         a lock or unlock request to the server.
         """
         if not self.ws:
+            logger.warning("Cannot toggle lock: no WebSocket connection")
             return
+
+        chat = self._get_chat()
 
         try:
             if self.should_lock:
                 # Unlock the session
+                logger.info("Unlocking session")
                 unlock_msg = json.dumps({"type": "unlock_session"})
                 await self.ws.send(unlock_msg)
                 self.should_lock = False
-                chat = self.query_one("#chat", ChatContainer)
-                chat.add_message("Session unlocked.", role="system")
+                if chat:
+                    chat.add_message("Session unlocked.", role="system")
             else:
                 # Lock the session
+                logger.info("Locking session")
                 lock_msg = json.dumps({"type": "lock_session"})
                 await self.ws.send(lock_msg)
                 self.should_lock = True
-                chat = self.query_one("#chat", ChatContainer)
-                chat.add_message("Session locked.", role="system")
+                if chat:
+                    chat.add_message("Session locked.", role="system")
 
             # Update the header to reflect new lock status
             header = self.query_one(Header)
             header.refresh()
         except Exception as e:
-            chat = self.query_one("#chat", ChatContainer)
-            chat.add_message(f"Error toggling lock: {e}", role="system")
+            logger.error("Failed to toggle lock: %s", e)
+            if chat:
+                chat.add_message(f"Error toggling lock: {e}", role="system")

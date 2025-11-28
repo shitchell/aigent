@@ -80,6 +80,19 @@ class TuiConfig(BaseModel):
     """Configuration for TUI interface settings."""
     cursor_blink: bool = False
 
+
+class LogConfig(BaseModel):
+    """Configuration for logging settings.
+
+    Attributes:
+        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        file: Optional path to log file. If set, logs are written to this file
+            in addition to stderr.
+    """
+    level: str = "INFO"
+    file: Optional[str] = "~/.aigent/log.txt"
+
+
 class AgentConfig(BaseModel):
     """
     Global application configuration.
@@ -93,6 +106,9 @@ class AgentConfig(BaseModel):
 
     # TUI Configuration
     tui: TuiConfig = Field(default_factory=TuiConfig)
+
+    # Logging Configuration
+    log: LogConfig = Field(default_factory=LogConfig)
 
     # Security: Path Restrictions
     # List of allowed root directories for file operations.
