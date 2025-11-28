@@ -402,8 +402,6 @@ async def run_repl(args: Any) -> None:
                         }
                         await ws.send(json.dumps(msg))
                         CLIENT_STATE["pending_approval_id"] = None
-                        # Clear ready_for_input to wait for tool execution to complete
-                        ready_for_input.clear()
                         continue
 
                     # Handle slash commands
