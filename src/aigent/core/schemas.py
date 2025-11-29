@@ -50,6 +50,7 @@ class Session(BaseModel):
     """Represents a persistent chat session."""
     id: str
     name: Optional[str] = None
+    profile: str = "default"
     created_at: float = Field(default_factory=lambda: datetime.now().timestamp())
     updated_at: float = Field(default_factory=lambda: datetime.now().timestamp())
     history: List[Message] = Field(default_factory=list)

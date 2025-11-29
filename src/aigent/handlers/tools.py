@@ -15,6 +15,7 @@ from aigent.core.events import handles, bus, register_signals, CoreSignal
 from aigent.core.schemas import ToolRequest, ApprovalRequest, ApprovalResponse, Session
 from aigent.core.tools import fs_read, fs_write, fs_patch, bash_execute
 from aigent.core.logging import get_logger
+from aigent.core.profiles import profiles
 
 logger = get_logger(__name__)
 
@@ -45,11 +46,21 @@ async def on_tool_request(request: ToolRequest, session: Session) -> None:
     """Handle a tool execution request from the LLM."""
     logger.info(f"Tool Request: {request.tool_name} args={request.tool_input}")
     
-    # 1. Policy Check (Simplified V2: Always Ask for bash/write)
-    # Future: Load policy from Session/Profile
-    requires_approval = request.tool_name in ["bash_execute", "fs_write", "fs_patch"]
+    # 1. Policy Check
+    profile = profiles.get_profile(session.profile)
+    policy = profiles.get_permission_policy(profile.permission_schema, request.tool_name)
     
-    if requires_approval:
+    # Policy: "allow", "deny", "ask"
+    if policy == "deny":
+        await bus.dispatch(
+            ToolSignal.EXECUTE_ERROR,
+            request_id=request.request_id,
+            error="Permission denied by policy.",
+            session=session
+        )
+        return
+        
+    if policy == "ask":
         # Store state
         PENDING_REQUESTS[request.request_id] = request
         
@@ -63,7 +74,7 @@ async def on_tool_request(request: ToolRequest, session: Session) -> None:
         )
         return
 
-    # 2. Execute Immediately if safe
+    # 2. Execute Immediately if safe ("allow")
     await _execute_tool(request, session)
 
 @handles(ToolSignal.APPROVAL_RESOLVED)

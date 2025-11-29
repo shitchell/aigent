@@ -26,6 +26,7 @@ from aigent.handlers.tools import ToolSignal
 import aigent.handlers.session
 import aigent.handlers.tools
 import aigent.handlers.llm
+import aigent.handlers.commands
 
 logger = get_logger(__name__)
 
@@ -133,6 +134,10 @@ async def websocket_endpoint(
     
     # Load Session & Create User
     session = await session_store.load_session(session_id)
+    # Update profile if not set or if user requested specific (logic customizable)
+    if profile != "default":
+        session.profile = profile
+        
     user = User(id=user_id, name=user_id, client_type=client_type) # Simple mapping
     
     # Notify System (Connect)
