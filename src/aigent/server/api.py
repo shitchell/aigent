@@ -42,8 +42,6 @@ logger = get_logger(__name__)
 
 app = FastAPI()
 
-PID_FILE = Path.home() / ".aigent" / "server.pid"
-
 # Mount Static Files (Web UI)
 try:
     # Assume static/ is in project root
@@ -54,6 +52,15 @@ except Exception:
 @app.get("/")
 async def root():
     return FileResponse("static/index.html")
+
+@app.get("/api/health")
+async def health_check():
+    """Return server status and PID."""
+    return {
+        "status": "ok",
+        "pid": os.getpid(),
+        "active_connections": sum(len(c) for c in manager.active_connections.values())
+    }
 
 # --- Connection Manager ---
 
@@ -204,17 +211,6 @@ async def websocket_endpoint(
     except WebSocketDisconnect:
         manager.disconnect(websocket, session_id)
         await bus.dispatch(CoreSignal.CLIENT_DISCONNECT, session=session, user=user)
-
-@app.on_event("startup")
-async def startup_event():
-    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(PID_FILE, "w") as f:
-        f.write(str(os.getpid()))
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    if PID_FILE.exists():
-        PID_FILE.unlink()
 
 async def run_server(host: str = "127.0.0.1", port: int = 8000):
     """Start the Uvicorn server."""

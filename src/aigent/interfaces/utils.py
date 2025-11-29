@@ -22,6 +22,18 @@ async def check_server(host: str, port: int) -> bool:
         except Exception:
             return False
 
+async def get_server_pid(host: str, port: int) -> int | None:
+    """Fetch the server PID from the API."""
+    url = f"http://{host}:{port}/api/health"
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(url, timeout=1.0)
+            if resp.status_code == 200:
+                return resp.json().get("pid")
+        except Exception:
+            pass
+    return None
+
 async def ensure_server(host: str, port: int) -> bool:
     """Check if server is running, if not start it."""
     if await check_server(host, port):

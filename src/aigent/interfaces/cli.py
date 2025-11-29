@@ -7,27 +7,24 @@ import argparse
 import asyncio
 import os
 import signal
-from pathlib import Path
+import sys
 
 from dotenv import load_dotenv
 
 from aigent.core.logging import configure_logging
+from aigent.interfaces.utils import get_server_pid
 
-PID_FILE = Path.home() / ".aigent" / "server.pid"
-
-def kill_server():
-    if not PID_FILE.exists():
-        print("No server PID file found.")
+async def kill_server(host: str, port: int):
+    pid = await get_server_pid(host, port)
+    if not pid:
+        print(f"No server found at {host}:{port}")
         return
-        
+
     try:
-        pid = int(PID_FILE.read_text().strip())
         os.kill(pid, signal.SIGTERM)
         print(f"Sent SIGTERM to server (PID {pid}).")
-        # Cleanup happens in server shutdown hook, but we can force it
     except ProcessLookupError:
         print(f"Server process {pid} not found.")
-        PID_FILE.unlink()
     except Exception as e:
         print(f"Error killing server: {e}")
 
@@ -54,7 +51,9 @@ def run_cli():
     serve_parser.add_argument("--debug", action="store_true", help="Enable verbose logging")
 
     # Kill Server Command
-    subparsers.add_parser("kill-server", help="Stop the background server")
+    kill_parser = subparsers.add_parser("kill-server", help="Stop the background server")
+    kill_parser.add_argument("--host", default="127.0.0.1")
+    kill_parser.add_argument("--port", type=int, default=8000)
 
     args = parser.parse_args()
     
@@ -71,7 +70,7 @@ def run_cli():
         asyncio.run(run_server(args.host, args.port))
         
     elif args.command == "kill-server":
-        kill_server()
+        asyncio.run(kill_server(args.host, args.port))
         
     elif args.command == "chat":
         # Determine mode
