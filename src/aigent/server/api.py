@@ -30,6 +30,7 @@ from aigent.core.schemas import (
 )
 from aigent.core.persistence import session_store
 from aigent.core.logging import get_logger
+from aigent.core.profiles import profiles
 from aigent.handlers.tools import ToolSignal
 
 # Import Handlers to Register them
@@ -61,6 +62,20 @@ async def health_check():
         "pid": os.getpid(),
         "active_connections": sum(len(c) for c in manager.active_connections.values())
     }
+
+@app.get("/api/profiles")
+async def get_profiles():
+    """Return list of available profiles."""
+    if not profiles.loaded:
+        profiles.load()
+    return list(profiles.config.profiles.keys())
+
+@app.get("/api/config")
+async def get_config():
+    """Return global settings."""
+    if not profiles.loaded:
+        profiles.load()
+    return profiles.config.settings.model_dump()
 
 # --- Connection Manager ---
 
