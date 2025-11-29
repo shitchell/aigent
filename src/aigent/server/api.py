@@ -6,7 +6,11 @@ and the internal Event Bus.
 
 import asyncio
 import json
-from typing import Dict, List, Any
+import os
+import signal
+import sys
+from pathlib import Path
+from typing import Dict, List, Any, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import FileResponse
@@ -38,6 +42,8 @@ logger = get_logger(__name__)
 
 app = FastAPI()
 
+PID_FILE = Path.home() / ".aigent" / "server.pid"
+
 # Mount Static Files (Web UI)
 try:
     # Assume static/ is in project root
@@ -55,11 +61,32 @@ class ConnectionManager:
     def __init__(self):
         # session_id -> list[WebSocket]
         self.active_connections: Dict[str, List[WebSocket]] = {}
-        # session_id -> Session (Cache?)
-        # For V2, we load session on every request or cache it?
-        # Loading from persistence is safer for now.
+        self.shutdown_task: Optional[asyncio.Task] = None
         
+    def _cancel_shutdown(self):
+        if self.shutdown_task:
+            logger.info("New connection: Server shutdown cancelled.")
+            self.shutdown_task.cancel()
+            self.shutdown_task = None
+
+    def _schedule_shutdown(self):
+        if self.shutdown_task:
+            return
+            
+        async def shutdown_timer():
+            logger.info("No active connections. Server shutting down in 60s...")
+            try:
+                await asyncio.sleep(60)
+                logger.info("Server shutting down due to inactivity.")
+                os.kill(os.getpid(), signal.SIGTERM)
+            except asyncio.CancelledError:
+                pass
+                
+        self.shutdown_task = asyncio.create_task(shutdown_timer())
+
     async def connect(self, websocket: WebSocket, session_id: str):
+        self._cancel_shutdown()
+        
         await websocket.accept()
         if session_id not in self.active_connections:
             self.active_connections[session_id] = []
@@ -72,6 +99,11 @@ class ConnectionManager:
                 self.active_connections[session_id].remove(websocket)
             if not self.active_connections[session_id]:
                 del self.active_connections[session_id]
+                
+        # Check global count
+        total = sum(len(c) for c in self.active_connections.values())
+        if total == 0:
+            self._schedule_shutdown()
 
     async def broadcast(self, session_id: str, message: Dict[str, Any]):
         if session_id not in self.active_connections:
@@ -79,7 +111,7 @@ class ConnectionManager:
         
         # Serialize once
         text = json.dumps(message)
-        for connection in self.active_connections[session_id]:
+        for connection in list(self.active_connections[session_id]): # Copy list for safety
             try:
                 await connection.send_text(text)
             except Exception as e:
@@ -92,39 +124,33 @@ manager = ConnectionManager()
 @handles(CoreSignal.SYSTEM_OUTPUT)
 async def on_system_output(content: str, session: Session):
     """Send text response to clients."""
-    await manager.broadcast(session.id, {
-        "type": "token", # Use legacy type for frontend compat? Or new?
-        # Frontend expects 'token' for streaming or 'history_content'.
-        # Let's use 'token' for now.
-        "content": content
-    })
+    await manager.broadcast(
+        session.id,
+        {
+            "type": "token",
+            "content": content,
+        },
+    )
     # Also send finish?
     await manager.broadcast(session.id, {"type": "finish"})
 
 @handles(ToolSignal.APPROVAL_REQUESTED)
 async def on_approval_requested(
-    request_id: str, 
-    tool_name: str, 
-    tool_input: Dict[str, Any], 
-    session: Session
+    request_id: str, tool_name: str, tool_input: Dict[str, Any], session: Session
 ):
     """Broadcast approval request."""
-    await manager.broadcast(session.id, {
-        "type": "approval_request",
-        "metadata": {
-            "request_id": request_id,
-            "tool": tool_name,
-            "input": tool_input
-        }
-    })
+    await manager.broadcast(
+        session.id,
+        {
+            "type": "approval_request",
+            "metadata": {"request_id": request_id, "tool": tool_name, "input": tool_input},
+        },
+    )
 
 @handles(ToolSignal.EXECUTE_SUCCESS)
 async def on_tool_success(request_id: str, result: str, session: Session):
     """Broadcast tool result."""
-    await manager.broadcast(session.id, {
-        "type": "tool_end",
-        "content": result
-    })
+    await manager.broadcast(session.id, {"type": "tool_end", "content": result})
 
 # --- WebSocket Endpoint (Inbound: WebSocket -> Bus) ---
 
@@ -134,75 +160,65 @@ async def websocket_endpoint(
     session_id: str,
     user_id: str = Query("anon"),
     profile: str = Query("default"),
-    client_type: str = Query("unknown") # Expecting "web", "tui", "repl"
+    client_type: str = Query("unknown"),
 ):
     await manager.connect(websocket, session_id)
     
     # Load Session & Create User
     session = await session_store.load_session(session_id)
-    # Update profile if not set or if user requested specific (logic customizable)
     if profile != "default":
         session.profile = profile
         
-    user = User(id=user_id, name=user_id, client_type=client_type) # Simple mapping
+    user = User(id=user_id, name=user_id, client_type=client_type)
     
-    # Notify System (Connect)
     await bus.dispatch(CoreSignal.CLIENT_CONNECT, session=session, user=user, websocket=websocket)
 
     try:
         while True:
             data = await websocket.receive_text()
-            
-            # Parse JSON or Raw Text?
-            # V1 frontend sends raw text for chat, but JSON for approvals/commands.
             try:
                 msg_json = json.loads(data)
-                
-                # Check for Approval Response
                 if isinstance(msg_json, dict) and msg_json.get("type") == "approval_response":
                     await bus.dispatch(
                         ToolSignal.APPROVAL_RESOLVED,
                         request_id=msg_json["request_id"],
                         decision=msg_json["decision"],
                         session=session,
-                        user=user
+                        user=user,
                     )
                     continue
-                    
-                # Check for Commands? (V2: /reset is handled by frontend or backend? Let's say raw text)
-                
             except json.JSONDecodeError:
-                pass # Treat as chat input
+                pass
 
-            # It's a Chat Message
-            # 1. Create Message Object
-            msg_obj = Message(
-                role="user",
-                content=data,
-                metadata={"user_id": user.id}
+            msg_obj = Message(role="user", content=data, metadata={"user_id": user.id})
+            
+            await manager.broadcast(
+                session_id,
+                {"type": "user_input", "content": data, "metadata": {"user_id": user.id}},
             )
             
-            # 2. Broadcast Echo (UX)
-            await manager.broadcast(session_id, {
-                "type": "user_input",
-                "content": data,
-                "metadata": {"user_id": user.id}
-            })
-            
-            # 3. Dispatch to Core
             await bus.dispatch(
-                CoreSignal.CLIENT_INPUT_RECEIVED,
-                session=session,
-                user=user,
-                message=msg_obj
+                CoreSignal.CLIENT_INPUT_RECEIVED, session=session, user=user, message=msg_obj
             )
             
     except WebSocketDisconnect:
         manager.disconnect(websocket, session_id)
         await bus.dispatch(CoreSignal.CLIENT_DISCONNECT, session=session, user=user)
 
+@app.on_event("startup")
+async def startup_event():
+    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if PID_FILE.exists():
+        PID_FILE.unlink()
+
 async def run_server(host: str = "127.0.0.1", port: int = 8000):
     """Start the Uvicorn server."""
+    # We don't use 'app' string here because we are running programmatically
     config = uvicorn.Config(app, host=host, port=port)
     server = uvicorn.Server(config)
     await server.serve()

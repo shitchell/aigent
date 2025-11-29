@@ -5,10 +5,31 @@ Routes to TUI or REPL interfaces.
 
 import argparse
 import asyncio
-import sys
+import os
+import signal
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 from aigent.core.logging import configure_logging
+
+PID_FILE = Path.home() / ".aigent" / "server.pid"
+
+def kill_server():
+    if not PID_FILE.exists():
+        print("No server PID file found.")
+        return
+        
+    try:
+        pid = int(PID_FILE.read_text().strip())
+        os.kill(pid, signal.SIGTERM)
+        print(f"Sent SIGTERM to server (PID {pid}).")
+        # Cleanup happens in server shutdown hook, but we can force it
+    except ProcessLookupError:
+        print(f"Server process {pid} not found.")
+        PID_FILE.unlink()
+    except Exception as e:
+        print(f"Error killing server: {e}")
 
 def run_cli():
     load_dotenv()
@@ -32,6 +53,9 @@ def run_cli():
     serve_parser.add_argument("--port", type=int, default=8000)
     serve_parser.add_argument("--debug", action="store_true", help="Enable verbose logging")
 
+    # Kill Server Command
+    subparsers.add_parser("kill-server", help="Stop the background server")
+
     args = parser.parse_args()
     
     if args.version:
@@ -45,6 +69,9 @@ def run_cli():
     if args.command == "serve":
         from aigent.server.api import run_server
         asyncio.run(run_server(args.host, args.port))
+        
+    elif args.command == "kill-server":
+        kill_server()
         
     elif args.command == "chat":
         # Determine mode
