@@ -32,6 +32,7 @@ from aigent.core.persistence import session_store
 from aigent.core.logging import get_logger
 from aigent.core.profiles import profiles
 from aigent.handlers.tools import ToolSignal
+from aigent.handlers.llm import LLMSignal
 
 # Import Handlers to Register them
 import aigent.handlers.session
@@ -143,13 +144,29 @@ manager = ConnectionManager()
 
 # --- Handlers (Outbound: Bus -> WebSocket) ---
 
+@handles(LLMSignal.TOKEN_STREAM)
+async def on_llm_token(content: str, session: Session):
+    """Broadcast tokens."""
+    await manager.broadcast(session.id, {
+        "type": "token",
+        "content": content
+    })
+
+@handles(CoreSignal.SYSTEM_ERROR)
+async def on_system_error(exception: Exception, session: Session, **kwargs):
+    """Broadcast errors."""
+    await manager.broadcast(session.id, {
+        "type": "error",
+        "content": str(exception)
+    })
+
 @handles(CoreSignal.SYSTEM_OUTPUT)
 async def on_system_output(content: str, session: Session):
     """Send text response to clients."""
     await manager.broadcast(
         session.id,
         {
-            "type": "token",
+            "type": "history_content",
             "content": content,
         },
     )

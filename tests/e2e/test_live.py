@@ -2,14 +2,16 @@ import pytest
 import json
 import websockets
 import asyncio
+import uuid
 
 @pytest.mark.asyncio
 async def test_live_chat_flow(aigent_server):
     """Test connecting, sending a message, and receiving tokens."""
     
-    # Use 'test' profile which uses gemini-flash (cheap/fast)
-    # Using random session ID
-    uri = f"{aigent_server}/ws/chat/e2e-test-session?profile=test&user_id=tester"
+    # Use 'default' profile (gpt-4o-mini)
+    # Using random session ID to ensure fresh state
+    session_id = f"e2e-{uuid.uuid4().hex[:8]}"
+    uri = f"{aigent_server}/ws/chat/{session_id}?profile=default&user_id=tester"
     
     async with websockets.connect(uri) as ws:
         # 1. Send Message
@@ -32,6 +34,9 @@ async def test_live_chat_flow(aigent_server):
                     
                     elif typ == "token":
                         tokens.append(data["content"])
+                        
+                    elif typ == "error":
+                        pytest.fail(f"Server reported error: {data['content']}")
                         
                     elif typ == "finish":
                         break

@@ -69,11 +69,21 @@ async def _get_llm(profile_name: str):
 
 async def _generate_response(session: Session, user: User | None) -> None:
     """Run the LLM against the current session history."""
+    logger.debug(f"Generating response for session {session.id} (Profile: {session.profile})")
     
     # 1. Configuration
     llm_raw = await _get_llm(session.profile)
-    # Bind tools (Future: Filter based on profile.allowed_tools)
-    llm_with_tools = llm_raw.bind_tools(CORE_TOOLS)
+    profile = profiles.get_profile(session.profile)
+    
+    # Filter Tools
+    allowed = set(profile.allowed_tools)
+    if "*" in allowed:
+        final_tools = CORE_TOOLS
+    else:
+        final_tools = [t for t in CORE_TOOLS if t.name in allowed]
+        
+    logger.debug(f"Binding tools: {[t.name for t in final_tools]}")
+    llm_with_tools = llm_raw.bind_tools(final_tools)
     
     # 2. Build Context
     lc_messages: List[BaseMessage] = []
@@ -85,7 +95,6 @@ async def _generate_response(session: Session, user: User | None) -> None:
     )
     
     # Load AIGENT.md overrides
-    # Order: /etc -> ~/.aigent -> ./.aigent
     paths = [
         Path("/etc/aigent/AIGENT.md"),
         Path.home() / ".aigent" / "AIGENT.md",
@@ -107,20 +116,37 @@ async def _generate_response(session: Session, user: User | None) -> None:
         elif msg.role == RoleType.ASSISTANT:
             lc_messages.append(AIMessage(content=msg.content))
         elif msg.role == RoleType.TOOL:
-            # We assume tool_call_id is in metadata. If not, LangChain might error if we strictly validate.
-            # But for V2 MVP we proceed.
             tcid = msg.metadata.get("tool_call_id", "unknown")
             lc_messages.append(ToolMessage(content=msg.content, tool_call_id=tcid))
 
-    # 3. Call LLM
+    # 3. Call LLM (Streaming)
+    full_response = None
+    
     try:
-        response = await llm_with_tools.ainvoke(lc_messages)
+        async for chunk in llm_with_tools.astream(lc_messages):
+            if not full_response:
+                full_response = chunk
+            else:
+                full_response += chunk
+                
+            if chunk.content:
+                await bus.dispatch(
+                    LLMSignal.TOKEN_STREAM,
+                    content=str(chunk.content),
+                    session=session
+                )
+                
     except Exception as e:
         logger.error(f"LLM Error: {e}")
-        await bus.dispatch(CoreSignal.SYSTEM_ERROR, error=str(e))
+        await bus.dispatch(CoreSignal.SYSTEM_ERROR, exception=e, session=session)
+        return
+
+    if not full_response:
         return
 
     # 4. Process Response
+    response = full_response
+    
     if response.tool_calls:
         ai_msg = Message(
             role=RoleType.ASSISTANT,
