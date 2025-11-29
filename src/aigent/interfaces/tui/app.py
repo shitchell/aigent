@@ -22,6 +22,7 @@ from aigent.interfaces.tui.widgets.message import MessageWidget
 from aigent.interfaces.tui.widgets.approval_dialog import ApprovalDialog
 from aigent.core.logging import get_logger
 from aigent.interfaces.commands import get_command_names
+from aigent.interfaces.utils import ensure_server
 
 logger = get_logger(__name__)
 
@@ -146,6 +147,16 @@ class AigentApp(App[None]):
     def action_clear_chat(self) -> None:
         self.query_one("#chat", ChatContainer).remove_children()
 
-def run_tui(args: Any):
+async def run_tui_async(args: Any):
+    if not await ensure_server(args.host, args.port):
+        return
     app = AigentApp(args)
-    app.run()
+    await app.run_async()
+
+def run_tui(args: Any):
+    # Textual's app.run() is async-compatible but best run via run_async if we are already in async mode?
+    # CLI calls asyncio.run(run_tui(args)).
+    # So run_tui should be async.
+    # Wait, cli.py calls asyncio.run(run_tui(args)). 
+    # So run_tui must be a coroutine.
+    return run_tui_async(args)

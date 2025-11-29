@@ -11,6 +11,8 @@ from typing import Any
 
 import websockets
 
+from aigent.interfaces.utils import ensure_server
+
 def colorize(text: str, color: str) -> str:
     colors = {
         'green': '\033[32m',
@@ -21,6 +23,9 @@ def colorize(text: str, color: str) -> str:
     return f"{colors.get(color, '')}{text}{colors['reset']}"
 
 async def run_repl(args: Any):
+    if not await ensure_server(args.host, args.port):
+        return
+
     session_id = args.session or f"repl-{uuid.uuid4().hex[:8]}"
     user_id = f"user-{uuid.uuid4().hex[:4]}"
     url = f"ws://{args.host}:{args.port}/ws/chat/{session_id}?user_id={user_id}&client_type=repl"
