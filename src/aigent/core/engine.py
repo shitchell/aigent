@@ -1,4 +1,6 @@
 import asyncio
+import inspect
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, AsyncGenerator, Any, Optional
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage, ToolMessage
 from langchain_core.language_models import BaseChatModel
@@ -28,6 +30,12 @@ from aigent.plugins.loader import PluginLoader
 from aigent.core.tools import fs_read, fs_write, fs_patch, bash_execute
 from aigent.core.permissions import Authorizer
 from aigent.core.profiles import ProfileManager
+from aigent.core.logging import get_logger
+
+# Thread pool executor for running blocking tool operations
+# Using 4 workers to allow reasonable concurrency without excessive resource usage
+_tool_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="tool_worker")
+logger = get_logger(__name__)
 
 class AgentEngine:
     def __init__(self, profile: UserProfile, yolo: bool = False):
@@ -175,11 +183,25 @@ class AgentEngine:
     def _wrap_tool(self, tool: Any) -> Any:
         """
         Wraps a tool's _arun method to check permissions first.
+
+        For truly async tools, calls them directly. For synchronous tools,
+        runs them in a thread pool to prevent blocking the event loop.
+
+        This prevents blocking the event loop when tools use synchronous operations.
+        Truly async tools (detected via inspect.iscoroutinefunction) run natively,
+        while sync tools are offloaded to a thread pool, allowing the event loop
+        to continue processing other WebSocket messages in multi-client scenarios.
         """
         # We need to modify the instance method
         # This is a bit hacky but standard for dynamic interception
         original_arun = tool._arun
-        
+        original_run = tool._run
+
+        # Detect if this tool is truly async by checking the original function
+        # LangChain's @tool decorator might wrap an async function, so we need to check
+        # if the _arun method is a coroutine function
+        is_truly_async = inspect.iscoroutinefunction(original_arun)
+
         async def wrapped_arun(*args, config: Optional[RunnableConfig] = None, **kwargs):
             # Construct args dict for check
             input_args = {}
@@ -194,10 +216,32 @@ class AgentEngine:
             allowed = await self.authorizer.check(tool.name, input_args)
             if not allowed:
                 return "Error: Tool execution denied by user."
-            
-            # Pass config explicitly if provided
-            return await original_arun(*args, config=config, **kwargs)
-        
+
+            try:
+                if is_truly_async:
+                    # Tool has a truly async implementation - call it directly
+                    logger.debug(f"Starting async tool execution: {tool.name}")
+                    result = await original_arun(*args, config=config, **kwargs)
+                    logger.debug(f"Async tool execution completed: {tool.name}")
+                else:
+                    # Tool is synchronous - run in thread pool to prevent blocking
+                    logger.debug(f"Starting sync tool execution in thread pool: {tool.name}")
+                    # Run the synchronous _run method in a thread pool executor to prevent
+                    # blocking the event loop. LangChain tools have _run (sync) and _arun (async).
+                    # When _arun is not truly async, it often just calls _run internally, which
+                    # blocks the event loop. By wrapping _run in an executor, we prevent this
+                    # blocking behavior for sync tools with blocking operations.
+                    loop = asyncio.get_event_loop()
+                    result = await loop.run_in_executor(
+                        _tool_executor,
+                        lambda: original_run(*args, **{k: v for k, v in kwargs.items() if k != 'config'})
+                    )
+                    logger.debug(f"Sync tool execution completed: {tool.name}")
+                return result
+            except Exception as e:
+                logger.error(f"Tool execution failed: {tool.name} - {e}")
+                raise
+
         tool._arun = wrapped_arun
         return tool
 

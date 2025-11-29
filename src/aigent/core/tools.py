@@ -1,5 +1,6 @@
 from langchain_core.tools import tool
 import subprocess
+import asyncio
 import os
 from pathlib import Path
 import difflib
@@ -184,10 +185,9 @@ def fs_patch(
     except Exception as e:
         return f"Error patching file: {e}"
 
-@tool
-def bash_execute(command: str) -> str:
+async def bash_execute_async(command: str) -> str:
     """
-    Executes a bash command on the local system.
+    Executes a bash command on the local system asynchronously.
 
     Args:
         command (str): The bash command to execute.
@@ -199,18 +199,23 @@ def bash_execute(command: str) -> str:
         Exception: If the command fails or times out.
     """
     try:
-        result = subprocess.run(
-            command, 
-            shell=True, 
-            capture_output=True, 
-            text=True, 
-            timeout=30
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
-        output = result.stdout
-        if result.stderr:
-            output += f"\nSTDERR:\n{result.stderr}"
-        return output
-    except subprocess.TimeoutExpired:
-        return "Error: Command timed out after 30 seconds."
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+            output = stdout.decode() if stdout else ""
+            if stderr:
+                output += f"\nSTDERR:\n{stderr.decode()}"
+            return output
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return "Error: Command timed out after 30 seconds."
     except Exception as e:
         return f"Error executing command: {e}"
+
+# Create the tool from the async function
+bash_execute = tool(bash_execute_async)
