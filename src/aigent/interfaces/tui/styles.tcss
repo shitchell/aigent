@@ -1,0 +1,42 @@
+/* Aigent TUI Styles */
+
+ChatContainer {
+    height: 1fr;
+    border: solid $primary;
+    padding: 1;
+    scrollbar-gutter: stable;
+}
+
+MessageWidget {
+    padding: 1;
+    margin-bottom: 1;
+}
+
+.user-message {
+    background: $surface;
+    border-left: thick $primary;
+    color: $text;
+}
+
+.assistant-message {
+    background: $surface-darken-1;
+    border-left: thick $accent;
+    color: $text;
+}
+
+.system-message {
+    background: $panel;
+    color: $text-muted;
+    text-style: italic;
+    border-left: thick $warning;
+}
+
+Input {
+    dock: bottom;
+    border: solid $primary;
+    margin-bottom: 1;
+}
+
+Input:focus {
+    border: solid $accent;
+}
