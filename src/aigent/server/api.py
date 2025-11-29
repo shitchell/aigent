@@ -15,8 +15,14 @@ import uvicorn
 
 from aigent.core.events import bus, handles, CoreSignal
 from aigent.core.schemas import (
-    User, Session, ClientType, ClientInput, 
-    ApprovalRequest, ApprovalResponse
+    User,
+    Session,
+    ClientType,
+    ClientInput,
+    ApprovalRequest,
+    ApprovalResponse,
+    Message,
+    RoleType,
 )
 from aigent.core.persistence import session_store
 from aigent.core.logging import get_logger

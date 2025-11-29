@@ -6,10 +6,12 @@ Routes to TUI or REPL interfaces.
 import argparse
 import asyncio
 import sys
+from dotenv import load_dotenv
 
 from aigent.core.logging import configure_logging
 
 def run_cli():
+    load_dotenv()
     parser = argparse.ArgumentParser(description="Aigent CLI")
     parser.add_argument("--version", action="store_true", help="Show version")
     
