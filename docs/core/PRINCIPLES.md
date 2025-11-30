@@ -25,7 +25,17 @@ To add a feature or implement a change, the goal is to require modifications wit
 * **Universal Linting:** All code, scripts, and configurations must be linted. This enforces consistency and catches potential issues early.
 * **Comprehensive Crash Analysis:** When failures occur, the system provides rich, actionable context (snapshots of state, entire pickled exceptions/frames where possible) for post-mortem analysis.
 * **Resilient Execution:** The system is designed to gracefully handle component failures, ensuring that a single error does not bring down the entire application.
-* **Comprehensive Automated Testing:** We test everything. This includes unit tests for isolated logic, mock tests for integrations, and E2E tests using live scenarios.
+* **Comprehensive Automated Testing:** We test everything. This includes unit tests for isolated logic, mock tests for integrations, and E2E tests using browser/UI testing frameworks and live scenarios.
+  * When features are implemented, write tests cases for them
+  * When bugs are found:
+    1. Write a failing test case that should capture the bug
+    2. Implement and commit a fix (do not commit the test yet)
+    3. Re-run the test case
+    * IF the re-run does not result in a success:
+      * Revert the committed fix
+      * Start back at #1 and re-try writing the failed test
+      * SUCCESS: we can `run the test -> it fails -> implement the fix -> re-run the test -> it succeeds`
+      * This ensures we maintain robust, reliable tests that accurately capture bugs and ensure we catch them if they ever appear again
 
 ### ✒️ Code Craft & Readability
 * **Concise Functions:** Keep functions small and focused (ideally under 50 lines). If logic grows complex, split it into smaller, named sub-functions to foster readability and testability.
