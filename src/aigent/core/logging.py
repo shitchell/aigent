@@ -21,6 +21,7 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 DEFAULT_LOG_DIR = Path.home() / ".aigent" / "logs"
 DEFAULT_LOG_FILE = DEFAULT_LOG_DIR / "aigent.log"
 
+
 def get_logger(name: str) -> logging.Logger:
     """Get a logger for the specified module.
 
@@ -34,10 +35,9 @@ def get_logger(name: str) -> logging.Logger:
         name = f"{ROOT_LOGGER_NAME}.{name}"
     return logging.getLogger(name)
 
+
 def configure_logging(
-    level_str: str = "INFO",
-    log_file: Optional[Path] = None,
-    verbose: bool = False
+    level_str: str = "INFO", log_file: Optional[Path] = None, verbose: bool = False
 ) -> None:
     """Configure the root logger.
 
@@ -48,19 +48,18 @@ def configure_logging(
     """
     root_logger = logging.getLogger(ROOT_LOGGER_NAME)
     root_logger.handlers.clear()
-    
+
     # Determine Level
     if verbose:
         level = logging.DEBUG
     else:
         level = getattr(logging, level_str.upper(), logging.INFO)
-    
+
     root_logger.setLevel(level)
-    
+
     # Determine Format
     formatter = logging.Formatter(
-        LOG_FORMAT_DEBUG if level == logging.DEBUG else LOG_FORMAT,
-        datefmt=DATE_FORMAT
+        LOG_FORMAT_DEBUG if level == logging.DEBUG else LOG_FORMAT, datefmt=DATE_FORMAT
     )
 
     # 1. Console Handler (Stderr)
@@ -73,20 +72,17 @@ def configure_logging(
     target_file = log_file or DEFAULT_LOG_FILE
     try:
         target_file.parent.mkdir(parents=True, exist_ok=True)
-        
+
         file_handler = RotatingFileHandler(
-            target_file,
-            maxBytes=10 * 1024 * 1024, # 10MB
-            backupCount=5,
-            encoding='utf-8'
+            target_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"  # 10MB
         )
         file_handler.setLevel(level)
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)
-        
+
     except Exception as e:
         # Fallback if we can't write to disk
-        console_handler.setFormatter(formatter) 
+        console_handler.setFormatter(formatter)
         root_logger.warning(f"Failed to setup file logging at {target_file}: {e}")
 
     # Prevent propagation to avoid double logging if root handlers are set elsewhere

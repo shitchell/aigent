@@ -14,7 +14,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 try:
     from enum import StrEnum
 except ImportError:
-    from strenum import StrEnum
+    from strenum import StrEnum  # type: ignore[assignment]
 
 from aigent.core.events import CoreSignal, bus, handles, register_signals
 from aigent.core.logging import get_logger
@@ -26,13 +26,16 @@ from aigent.handlers.tools import ToolSignal
 
 logger = get_logger(__name__)
 
+
 class LLMSignal(StrEnum):
     TOKEN_STREAM = "llm:token"
+
 
 register_signals(LLMSignal)
 
 # Core Tools List
 CORE_TOOLS = [fs_read, fs_write, fs_patch, bash_execute]
+
 
 @handles(CoreSignal.CLIENT_INPUT_RECEIVED, priority=0)
 async def on_client_message(session: Session, user: User, message: Message) -> None:
@@ -40,65 +43,68 @@ async def on_client_message(session: Session, user: User, message: Message) -> N
     # Ignore commands (handled by CommandHandler with priority 100)
     if message.content.strip().startswith("/"):
         return
-        
+
     await _generate_response(session, user)
+
 
 @handles(ToolSignal.EXECUTE_SUCCESS)
 async def on_tool_success(request_id: str, result: str, session: Session) -> None:
     """Handle tool result."""
     await _generate_response(session, None)
 
+
 @handles(ToolSignal.EXECUTE_ERROR)
 async def on_tool_error(request_id: str, error: str, session: Session) -> None:
     """Handle tool failure."""
     await _generate_response(session, None)
 
-async def _get_llm(profile_name: str):
+
+async def _get_llm(profile_name: str) -> Any:
     """Factory to get the right LLM based on profile."""
     profile = profiles.get_profile(profile_name)
-    
+
     if profile.model_provider == "openai":
         return ChatOpenAI(model=profile.model_name, temperature=profile.temperature)
     elif profile.model_provider == "anthropic":
-        return ChatAnthropic(model=profile.model_name, temperature=profile.temperature)
+        return ChatAnthropic(model=profile.model_name, temperature=profile.temperature)  # type: ignore[call-arg]
     elif profile.model_provider == "google":
         return ChatGoogleGenerativeAI(model=profile.model_name, temperature=profile.temperature)
-    
+
     # Fallback
     return ChatOpenAI(model="gpt-4o")
+
 
 async def _generate_response(session: Session, user: User | None) -> None:
     """Run the LLM against the current session history."""
     logger.debug(f"Generating response for session {session.id} (Profile: {session.profile})")
-    
+
     # 1. Configuration
     llm_raw = await _get_llm(session.profile)
     profile = profiles.get_profile(session.profile)
-    
+
     # Filter Tools
     allowed = set(profile.allowed_tools)
     if "*" in allowed:
         final_tools = CORE_TOOLS
     else:
         final_tools = [t for t in CORE_TOOLS if t.name in allowed]
-        
+
     logger.debug(f"Binding tools: {[t.name for t in final_tools]}")
     llm_with_tools = llm_raw.bind_tools(final_tools)
-    
+
     # 2. Build Context
     lc_messages: List[BaseMessage] = []
-    
+
     # System Prompt (Base + File Overrides)
     sys_content = SYSTEM_PROMPT.format(
-        user_name=user.name if user else "System",
-        session_id=session.id
+        user_name=user.name if user else "System", session_id=session.id
     )
-    
+
     # Load AIGENT.md overrides
     paths = [
         Path("/etc/aigent/AIGENT.md"),
         Path.home() / ".aigent" / "AIGENT.md",
-        Path.cwd() / ".aigent" / "AIGENT.md"
+        Path.cwd() / ".aigent" / "AIGENT.md",
     ]
     for p in paths:
         if p.exists():
@@ -108,7 +114,7 @@ async def _generate_response(session: Session, user: User | None) -> None:
                 logger.warning(f"Failed to read prompt file {p}: {e}")
 
     lc_messages.append(SystemMessage(content=sys_content))
-    
+
     # History
     for msg in session.history:
         if msg.role == RoleType.USER:
@@ -121,21 +127,19 @@ async def _generate_response(session: Session, user: User | None) -> None:
 
     # 3. Call LLM (Streaming)
     full_response = None
-    
+
     try:
         async for chunk in llm_with_tools.astream(lc_messages):
             if not full_response:
                 full_response = chunk
             else:
                 full_response += chunk
-                
+
             if chunk.content:
                 await bus.dispatch(
-                    LLMSignal.TOKEN_STREAM,
-                    content=str(chunk.content),
-                    session=session
+                    LLMSignal.TOKEN_STREAM, content=str(chunk.content), session=session
                 )
-                
+
     except Exception as e:
         logger.error(f"LLM Error: {e}")
         await bus.dispatch(CoreSignal.SYSTEM_ERROR, exception=e, session=session)
@@ -146,28 +150,20 @@ async def _generate_response(session: Session, user: User | None) -> None:
 
     # 4. Process Response
     response = full_response
-    
+
     if response.tool_calls:
         ai_msg = Message(
             role=RoleType.ASSISTANT,
-            content=str(response.content) or "", 
-            metadata={"tool_calls": response.tool_calls}
+            content=str(response.content) or "",
+            metadata={"tool_calls": response.tool_calls},
         )
         session.add_message(ai_msg)
-        
+
         for tc in response.tool_calls:
-            req = ToolRequest(
-                tool_name=tc["name"],
-                tool_input=tc["args"],
-                tool_call_id=tc["id"]
-            )
-            
-            await bus.dispatch(
-                "tool:execute_request",
-                request=req,
-                session=session
-            )
-            
+            req = ToolRequest(tool_name=tc["name"], tool_input=tc["args"], tool_call_id=tc["id"])
+
+            await bus.dispatch("tool:execute_request", request=req, session=session)
+
     else:
         content = str(response.content)
         session.add_message(Message(role=RoleType.ASSISTANT, content=content))

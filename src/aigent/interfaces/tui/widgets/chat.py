@@ -13,14 +13,10 @@ class ChatContainer(ScrollableContainer):
     """Container for chat messages."""
 
     def __init__(self, **kwargs: object) -> None:
-        super().__init__(**kwargs)
+        super().__init__(**kwargs)  # type: ignore[arg-type]
         self._current_streaming_message: Optional[MessageWidget] = None
 
-    def add_message(
-        self,
-        content: str,
-        role: RoleType = "user"
-    ) -> MessageWidget:
+    def add_message(self, content: str, role: RoleType = "user") -> MessageWidget:
         """Add a new message to the chat."""
         msg = MessageWidget(content, role=role)
         self.mount(msg)

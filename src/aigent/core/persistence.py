@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 
 SESSIONS_DIR = Path.home() / ".aigent" / "sessions"
 
+
 class SessionManager:
     def __init__(self, storage_dir: Path = SESSIONS_DIR):
         self.storage_dir = storage_dir
@@ -29,7 +30,7 @@ class SessionManager:
     async def load_session(self, session_id: str) -> Session:
         """Load a session or create a new one if it doesn't exist."""
         path = self._get_path(session_id)
-        
+
         if path.exists():
             try:
                 async with aiofiles.open(path, "r") as f:
@@ -42,7 +43,7 @@ class SessionManager:
                 # For robustness, maybe backup corrupt file and start new?
                 # Let's start new for now.
                 pass
-        
+
         # Create new
         logger.info(f"Creating new session: {session_id}")
         return Session(id=session_id)
@@ -63,6 +64,7 @@ class SessionManager:
     def list_sessions(self) -> list[str]:
         # Sync method for quick listing
         return [f.stem for f in self.storage_dir.glob("*.json")]
+
 
 # Singleton
 session_store = SessionManager()

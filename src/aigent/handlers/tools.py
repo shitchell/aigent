@@ -9,7 +9,7 @@ from uuid import uuid4
 try:
     from enum import StrEnum
 except ImportError:
-    from strenum import StrEnum
+    from strenum import StrEnum  # type: ignore[assignment]
 
 from aigent.core.events import handles, bus, register_signals, CoreSignal
 from aigent.core.schemas import (

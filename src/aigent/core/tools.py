@@ -13,10 +13,11 @@ from langchain_core.tools import tool
 
 # Reuse the validation logic from V1 (re-typed for strictness)
 # Note: ProfileManager is needed for allowed_work_dirs.
-# I'll create a minimal config/profile access later. 
+# I'll create a minimal config/profile access later.
 # For now, hardcode "." or read env?
-# Let's rebuild ProfileManager quickly in core/profiles.py? 
+# Let's rebuild ProfileManager quickly in core/profiles.py?
 # Yes, we need config.
+
 
 def validate_path(p: Path) -> Optional[str]:
     # Placeholder for Config-based validation
@@ -30,23 +31,28 @@ def validate_path(p: Path) -> Optional[str]:
     except Exception as e:
         return f"Error validating path: {e}"
 
+
 @tool("fs_read")
 def fs_read(path: str) -> str:
     """Reads the content of a file from the local filesystem."""
     try:
         p = Path(path).expanduser()
-        if err := validate_path(p): return err
-        if not p.exists(): return f"Error: File {path} does not exist."
+        if err := validate_path(p):
+            return err
+        if not p.exists():
+            return f"Error: File {path} does not exist."
         return p.read_text()
     except Exception as e:
         return f"Error reading file: {e}"
+
 
 @tool("fs_write")
 def fs_write(path: str, content: str, append: bool = False) -> str:
     """Writes content to a file in the local filesystem."""
     try:
         p = Path(path).expanduser()
-        if err := validate_path(p): return err
+        if err := validate_path(p):
+            return err
         mode = "a" if append else "w"
         with open(p, mode) as f:
             f.write(content)
@@ -54,41 +60,43 @@ def fs_write(path: str, content: str, append: bool = False) -> str:
     except Exception as e:
         return f"Error writing file: {e}"
 
+
 @tool("fs_patch")
 def fs_patch(path: str, target: str, replacement: str) -> str:
     """Replaces specific text in a file."""
     try:
         p = Path(path).expanduser()
-        if err := validate_path(p): return err
-        if not p.exists(): return f"Error: File {path} not found."
-        
+        if err := validate_path(p):
+            return err
+        if not p.exists():
+            return f"Error: File {path} not found."
+
         content = p.read_text()
         if target not in content:
             return "Error: Target text not found in file."
-            
+
         new_content = content.replace(target, replacement, 1)
         p.write_text(new_content)
-        
+
         # Diff
         diff = difflib.unified_diff(
             content.splitlines(),
             new_content.splitlines(),
             fromfile=f"a/{path}",
             tofile=f"b/{path}",
-            lineterm=""
+            lineterm="",
         )
         return "\n".join([line for line in diff if not line.startswith(("---", "+++"))])
     except Exception as e:
         return f"Error patching file: {e}"
+
 
 @tool("bash_execute")
 async def bash_execute(command: str) -> str:
     """Executes a bash command asynchronously."""
     try:
         proc = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         try:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
@@ -101,4 +109,3 @@ async def bash_execute(command: str) -> str:
             return "Error: Command timed out."
     except Exception as e:
         return f"Error executing command: {e}"
-

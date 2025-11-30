@@ -13,6 +13,7 @@ from aigent.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+
 async def check_server(host: str, port: int) -> bool:
     url = f"http://{host}:{port}/"
     async with httpx.AsyncClient() as client:
@@ -22,6 +23,7 @@ async def check_server(host: str, port: int) -> bool:
         except Exception:
             return False
 
+
 async def get_server_pid(host: str, port: int) -> int | None:
     """Fetch the server PID from the API."""
     url = f"http://{host}:{port}/api/health"
@@ -29,29 +31,30 @@ async def get_server_pid(host: str, port: int) -> int | None:
         try:
             resp = await client.get(url, timeout=1.0)
             if resp.status_code == 200:
-                return resp.json().get("pid")
+                return resp.json().get("pid")  # type: ignore[no-any-return]
         except Exception:
             pass
     return None
+
 
 async def ensure_server(host: str, port: int) -> bool:
     """Check if server is running, if not start it."""
     if await check_server(host, port):
         return True
-        
+
     print(f"Starting server at {host}:{port}...")
-    
+
     # Spawn process
     # We use sys.executable to ensure we use the same venv
     cmd = [sys.executable, "-m", "aigent.main", "serve", "--host", host, "--port", str(port)]
-    
+
     Popen(cmd, stdout=DEVNULL, stderr=DEVNULL, start_new_session=True)
-    
+
     # Wait for startup
-    for _ in range(20): # Wait up to 2 seconds
+    for _ in range(20):  # Wait up to 2 seconds
         if await check_server(host, port):
             return True
         await asyncio.sleep(0.1)
-        
+
     print("Failed to start server.")
     return False

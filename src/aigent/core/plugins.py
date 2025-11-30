@@ -13,21 +13,22 @@ from aigent.core.profiles import profiles
 
 logger = get_logger(__name__)
 
+
 def load_plugins() -> None:
     """Load plugins from the configured directory."""
     # Ensure config is loaded
     if not profiles.loaded:
         profiles.load()
-        
+
     plugin_dir_str = profiles.config.settings.plugin_dir
     plugin_dir = Path(plugin_dir_str).expanduser()
-    
+
     if not plugin_dir.exists():
         logger.debug(f"Plugin directory {plugin_dir} does not exist.")
         return
 
     logger.info(f"Loading plugins from {plugin_dir}")
-    
+
     for item in plugin_dir.iterdir():
         if item.suffix == ".py":
             _load_module(item)
@@ -37,6 +38,7 @@ def load_plugins() -> None:
                 _load_module(item / "main.py")
             elif (item / "__init__.py").exists():
                 _load_module(item / "__init__.py")
+
 
 def _load_module(path: Path) -> None:
     try:

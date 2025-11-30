@@ -18,15 +18,18 @@ logger = get_logger(__name__)
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "aigent" / "settings.yaml"
 # Legacy/Example paths could be checked too
 
+
 class PermissionSchema(BaseModel):
     name: str
-    default_policy: str # "allow", "deny", "ask"
+    default_policy: str  # "allow", "deny", "ask"
     tools: Dict[str, str] = Field(default_factory=dict)
+
 
 class ServerConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
     static_dir: str = "static"
+
 
 class Profile(BaseModel):
     name: str
@@ -35,7 +38,8 @@ class Profile(BaseModel):
     temperature: float = 0.7
     allowed_tools: List[str] = Field(default_factory=list)
     permission_schema: str = "default"
-    system_prompt: Optional[str] = None # Inline override
+    system_prompt: Optional[str] = None  # Inline override
+
 
 class Settings(BaseModel):
     default_profile: str = "default"
@@ -43,11 +47,13 @@ class Settings(BaseModel):
     tool_call_preview_length: int = 200
     allowed_work_dirs: List[str] = Field(default_factory=lambda: ["."])
 
+
 class Config(BaseModel):
     settings: Settings = Field(default_factory=Settings)
     server: ServerConfig = Field(default_factory=ServerConfig)
     permission_schemas: List[PermissionSchema] = Field(default_factory=list)
     profiles: Dict[str, Profile] = Field(default_factory=dict)
+
 
 class ProfileManager:
     def __init__(self, config_path: Path = DEFAULT_CONFIG_PATH):
@@ -73,28 +79,29 @@ class ProfileManager:
     def get_profile(self, name: str) -> Profile:
         if not self.loaded:
             self.load()
-        
+
         # Fallback to default if not found
         if name not in self.config.profiles:
             if name != self.config.settings.default_profile:
                 logger.warning(f"Profile '{name}' not found, trying default.")
                 name = self.config.settings.default_profile
-            
+
             if name not in self.config.profiles:
                 # Emergency fallback
                 return Profile(name="fallback", model_provider="openai", model_name="gpt-4o")
-        
+
         return self.config.profiles[name]
 
     def get_permission_policy(self, schema_name: str, tool_name: str) -> str:
         if not self.loaded:
             self.load()
-            
+
         schema = next((s for s in self.config.permission_schemas if s.name == schema_name), None)
         if not schema:
-            return "ask" # Safe default
-            
+            return "ask"  # Safe default
+
         return schema.tools.get(tool_name, schema.default_policy)
+
 
 # Singleton
 profiles = ProfileManager()

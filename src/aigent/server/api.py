@@ -35,10 +35,10 @@ from aigent.handlers.tools import ToolSignal
 from aigent.handlers.llm import LLMSignal
 
 # Import Handlers to Register them
-import aigent.handlers.session
-import aigent.handlers.tools
-import aigent.handlers.llm
-import aigent.handlers.commands
+import aigent.handlers.session  # noqa: F401
+import aigent.handlers.tools  # noqa: F401
+import aigent.handlers.llm  # noqa: F401
+import aigent.handlers.commands  # noqa: F401
 
 logger = get_logger(__name__)
 
@@ -51,52 +51,58 @@ try:
 except Exception:
     logger.warning("Static directory not found. Web UI disabled.")
 
+
 @app.get("/")
-async def root():
+async def root() -> FileResponse:
     return FileResponse("static/index.html")
 
+
 @app.get("/api/health")
-async def health_check():
+async def health_check() -> Dict[str, Any]:
     """Return server status and PID."""
     return {
         "status": "ok",
         "pid": os.getpid(),
-        "active_connections": sum(len(c) for c in manager.active_connections.values())
+        "active_connections": sum(len(c) for c in manager.active_connections.values()),
     }
 
+
 @app.get("/api/profiles")
-async def get_profiles():
+async def get_profiles() -> List[str]:
     """Return list of available profiles."""
     if not profiles.loaded:
         profiles.load()
     return list(profiles.config.profiles.keys())
 
+
 @app.get("/api/config")
-async def get_config():
+async def get_config() -> Dict[str, Any]:
     """Return global settings."""
     if not profiles.loaded:
         profiles.load()
     return profiles.config.settings.model_dump()
 
+
 # --- Connection Manager ---
 
+
 class ConnectionManager:
-    def __init__(self):
+    def __init__(self) -> None:
         # session_id -> list[WebSocket]
         self.active_connections: Dict[str, List[WebSocket]] = {}
-        self.shutdown_task: Optional[asyncio.Task] = None
-        
-    def _cancel_shutdown(self):
+        self.shutdown_task: Optional[asyncio.Task[None]] = None
+
+    def _cancel_shutdown(self) -> None:
         if self.shutdown_task:
             logger.info("New connection: Server shutdown cancelled.")
             self.shutdown_task.cancel()
             self.shutdown_task = None
 
-    def _schedule_shutdown(self):
+    def _schedule_shutdown(self) -> None:
         if self.shutdown_task:
             return
-            
-        async def shutdown_timer():
+
+        async def shutdown_timer() -> None:
             logger.info("No active connections. Server shutting down in 60s...")
             try:
                 await asyncio.sleep(60)
@@ -104,64 +110,62 @@ class ConnectionManager:
                 os.kill(os.getpid(), signal.SIGTERM)
             except asyncio.CancelledError:
                 pass
-                
+
         self.shutdown_task = asyncio.create_task(shutdown_timer())
 
-    async def connect(self, websocket: WebSocket, session_id: str):
+    async def connect(self, websocket: WebSocket, session_id: str) -> None:
         self._cancel_shutdown()
-        
+
         await websocket.accept()
         if session_id not in self.active_connections:
             self.active_connections[session_id] = []
         self.active_connections[session_id].append(websocket)
         logger.info(f"Client connected to session {session_id}")
 
-    def disconnect(self, websocket: WebSocket, session_id: str):
+    def disconnect(self, websocket: WebSocket, session_id: str) -> None:
         if session_id in self.active_connections:
             if websocket in self.active_connections[session_id]:
                 self.active_connections[session_id].remove(websocket)
             if not self.active_connections[session_id]:
                 del self.active_connections[session_id]
-                
+
         # Check global count
         total = sum(len(c) for c in self.active_connections.values())
         if total == 0:
             self._schedule_shutdown()
 
-    async def broadcast(self, session_id: str, message: Dict[str, Any]):
+    async def broadcast(self, session_id: str, message: Dict[str, Any]) -> None:
         if session_id not in self.active_connections:
             return
-        
+
         # Serialize once
         text = json.dumps(message)
-        for connection in list(self.active_connections[session_id]): # Copy list for safety
+        for connection in list(self.active_connections[session_id]):  # Copy list for safety
             try:
                 await connection.send_text(text)
             except Exception as e:
                 logger.warning(f"Failed to send to client: {e}")
 
+
 manager = ConnectionManager()
 
 # --- Handlers (Outbound: Bus -> WebSocket) ---
 
+
 @handles(LLMSignal.TOKEN_STREAM)
-async def on_llm_token(content: str, session: Session):
+async def on_llm_token(content: str, session: Session) -> None:
     """Broadcast tokens."""
-    await manager.broadcast(session.id, {
-        "type": "token",
-        "content": content
-    })
+    await manager.broadcast(session.id, {"type": "token", "content": content})
+
 
 @handles(CoreSignal.SYSTEM_ERROR)
-async def on_system_error(exception: Exception, session: Session, **kwargs):
+async def on_system_error(exception: Exception, session: Session, **kwargs: Any) -> None:
     """Broadcast errors."""
-    await manager.broadcast(session.id, {
-        "type": "error",
-        "content": str(exception)
-    })
+    await manager.broadcast(session.id, {"type": "error", "content": str(exception)})
+
 
 @handles(CoreSignal.SYSTEM_OUTPUT)
-async def on_system_output(content: str, session: Session):
+async def on_system_output(content: str, session: Session) -> None:
     """Send text response to clients."""
     await manager.broadcast(
         session.id,
@@ -173,10 +177,11 @@ async def on_system_output(content: str, session: Session):
     # Also send finish?
     await manager.broadcast(session.id, {"type": "finish"})
 
+
 @handles(ToolSignal.APPROVAL_REQUESTED)
 async def on_approval_requested(
     request_id: str, tool_name: str, tool_input: Dict[str, Any], session: Session
-):
+) -> None:
     """Broadcast approval request."""
     await manager.broadcast(
         session.id,
@@ -186,12 +191,15 @@ async def on_approval_requested(
         },
     )
 
+
 @handles(ToolSignal.EXECUTE_SUCCESS)
-async def on_tool_success(request_id: str, result: str, session: Session):
+async def on_tool_success(request_id: str, result: str, session: Session) -> None:
     """Broadcast tool result."""
     await manager.broadcast(session.id, {"type": "tool_end", "content": result})
 
+
 # --- WebSocket Endpoint (Inbound: WebSocket -> Bus) ---
+
 
 @app.websocket("/ws/chat/{session_id}")
 async def websocket_endpoint(
@@ -200,16 +208,16 @@ async def websocket_endpoint(
     user_id: str = Query("anon"),
     profile: str = Query("default"),
     client_type: str = Query("unknown"),
-):
+) -> None:
     await manager.connect(websocket, session_id)
-    
+
     # Load Session & Create User
     session = await session_store.load_session(session_id)
     if profile != "default":
         session.profile = profile
-        
-    user = User(id=user_id, name=user_id, client_type=client_type)
-    
+
+    user = User(id=user_id, name=user_id, client_type=ClientType(client_type))
+
     # Notify System (Connect)
     await bus.dispatch(CoreSignal.CLIENT_CONNECT, session=session, user=user, websocket=websocket)
 
@@ -230,7 +238,7 @@ async def websocket_endpoint(
                 session_id,
                 {"type": "tool_end", "content": msg.content, "metadata": msg.metadata},
             )
-    
+
     # Send finish to ensure UI state is clean
     await manager.broadcast(session_id, {"type": "finish"})
 
@@ -251,22 +259,23 @@ async def websocket_endpoint(
             except json.JSONDecodeError:
                 pass
 
-            msg_obj = Message(role="user", content=data, metadata={"user_id": user.id})
-            
+            msg_obj = Message(role=RoleType.USER, content=data, metadata={"user_id": user.id})
+
             await manager.broadcast(
                 session_id,
                 {"type": "user_input", "content": data, "metadata": {"user_id": user.id}},
             )
-            
+
             await bus.dispatch(
                 CoreSignal.CLIENT_INPUT_RECEIVED, session=session, user=user, message=msg_obj
             )
-            
+
     except WebSocketDisconnect:
         manager.disconnect(websocket, session_id)
         await bus.dispatch(CoreSignal.CLIENT_DISCONNECT, session=session, user=user)
 
-async def run_server(host: str = "127.0.0.1", port: int = 8000):
+
+async def run_server(host: str = "127.0.0.1", port: int = 8000) -> None:
     """Start the Uvicorn server."""
     # We don't use 'app' string here because we are running programmatically
     config = uvicorn.Config(app, host=host, port=port)

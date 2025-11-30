@@ -32,9 +32,7 @@ async def test_tool_result_added_to_history():
 
     # Create a tool request
     request = ToolRequest(
-        tool_name="bash_execute",
-        tool_input={"command": "echo test"},
-        tool_call_id="tc_test_123"
+        tool_name="bash_execute", tool_input={"command": "echo test"}, tool_call_id="tc_test_123"
     )
 
     # Mock the actual tool execution to return a predictable result
@@ -46,8 +44,10 @@ async def test_tool_result_added_to_history():
     mock_tool = MockTool()
 
     # Mock the bus.dispatch to avoid side effects
-    with patch("aigent.handlers.tools.TOOL_MAP", {"bash_execute": mock_tool}), \
-         patch("aigent.handlers.tools.bus.dispatch", new_callable=AsyncMock) as mock_dispatch:
+    with (
+        patch("aigent.handlers.tools.TOOL_MAP", {"bash_execute": mock_tool}),
+        patch("aigent.handlers.tools.bus.dispatch", new_callable=AsyncMock) as mock_dispatch,
+    ):
 
         # Execute the tool
         await _execute_tool(request, session)
@@ -55,26 +55,29 @@ async def test_tool_result_added_to_history():
         # Verify bus.dispatch was called with EXECUTE_SUCCESS
         assert mock_dispatch.called, "bus.dispatch should have been called"
         call_args = mock_dispatch.call_args
-        assert "tool:execute_success" in str(call_args) or "EXECUTE_SUCCESS" in str(call_args), \
-            f"EXECUTE_SUCCESS signal should have been dispatched, got: {call_args}"
+        assert "tool:execute_success" in str(call_args) or "EXECUTE_SUCCESS" in str(
+            call_args
+        ), f"EXECUTE_SUCCESS signal should have been dispatched, got: {call_args}"
 
     # THE BUG: This assertion will FAIL because the tool result
     # is not added to session.history
-    assert len(session.history) > initial_history_len, \
-        "Tool result was NOT added to session history (this is the bug!)"
+    assert (
+        len(session.history) > initial_history_len
+    ), "Tool result was NOT added to session history (this is the bug!)"
 
     # Verify the new message is a TOOL message
     last_msg = session.history[-1]
-    assert last_msg.role == RoleType.TOOL, \
-        f"Expected TOOL message, got {last_msg.role}"
+    assert last_msg.role == RoleType.TOOL, f"Expected TOOL message, got {last_msg.role}"
 
     # Verify the content contains the tool result
-    assert "test output" in last_msg.content, \
-        f"Expected tool output in message content, got: {last_msg.content}"
+    assert (
+        "test output" in last_msg.content
+    ), f"Expected tool output in message content, got: {last_msg.content}"
 
     # Verify tool_call_id is preserved in metadata
-    assert last_msg.metadata.get("tool_call_id") == "tc_test_123", \
-        "tool_call_id not preserved in metadata"
+    assert (
+        last_msg.metadata.get("tool_call_id") == "tc_test_123"
+    ), "tool_call_id not preserved in metadata"
 
 
 @pytest.mark.asyncio
@@ -88,11 +91,7 @@ async def test_tool_error_not_added_to_history():
     initial_history_len = len(session.history)
 
     # Create a request for a non-existent tool
-    request = ToolRequest(
-        tool_name="nonexistent_tool",
-        tool_input={},
-        tool_call_id="tc_error_123"
-    )
+    request = ToolRequest(tool_name="nonexistent_tool", tool_input={}, tool_call_id="tc_error_123")
 
     # Mock bus.dispatch
     with patch("aigent.handlers.tools.bus.dispatch", new_callable=AsyncMock) as mock_dispatch:
@@ -100,9 +99,11 @@ async def test_tool_error_not_added_to_history():
 
         # Verify EXECUTE_ERROR was dispatched
         call_args = str(mock_dispatch.call_args)
-        assert "execute_error" in call_args.lower(), \
-            "EXECUTE_ERROR should have been dispatched for missing tool"
+        assert (
+            "execute_error" in call_args.lower()
+        ), "EXECUTE_ERROR should have been dispatched for missing tool"
 
     # Error should NOT add to history
-    assert len(session.history) == initial_history_len, \
-        "Tool error should NOT add message to history"
+    assert (
+        len(session.history) == initial_history_len
+    ), "Tool error should NOT add message to history"

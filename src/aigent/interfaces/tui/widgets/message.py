@@ -27,12 +27,7 @@ class MessageWidget(Static):
 
     role: RoleType = reactive("user")  # type: ignore
 
-    def __init__(
-        self,
-        content: str = "",
-        role: RoleType = "user",
-        **kwargs: object
-    ) -> None:
+    def __init__(self, content: str = "", role: RoleType = "user", **kwargs: object) -> None:
         """Initialize a message widget.
 
         Args:
@@ -40,7 +35,7 @@ class MessageWidget(Static):
             role: The role of the message sender. Defaults to "user".
             **kwargs: Additional keyword arguments passed to Static.
         """
-        super().__init__(content, **kwargs)
+        super().__init__(content, **kwargs)  # type: ignore[arg-type]
         self.role = role
         self._content = content
 

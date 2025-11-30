@@ -60,7 +60,7 @@ class ApprovalDialog(ModalScreen[str]):
         tool_input: Dict[str, Any],
         request_id: str,
         on_decision: Callable[[str, str], None],
-        **kwargs: Any
+        **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self.tool_name = tool_name
@@ -69,11 +69,12 @@ class ApprovalDialog(ModalScreen[str]):
         self.on_decision = on_decision
 
     def compose(self) -> ComposeResult:
-        if isinstance(self.tool_input, dict):
-            formatted_input = json.dumps(self.tool_input, indent=2)
-        else:
-            formatted_input = str(self.tool_input)
-
+        # Format tool input, truncating if necessary
+        formatted_input = (
+            json.dumps(self.tool_input, indent=2)
+            if isinstance(self.tool_input, dict)
+            else str(self.tool_input)
+        )
         if len(formatted_input) > 500:
             formatted_input = formatted_input[:500] + "\n..."
 
@@ -81,19 +82,17 @@ class ApprovalDialog(ModalScreen[str]):
             yield Label("Tool Permission Request", id="approval-header")
 
             with Vertical(id="approval-content"):
-                yield Label(
-                    f"Tool: {self.tool_name}",
-                    classes="approval-label"
-                )
-                yield Static(
-                    f"Arguments:\n{formatted_input}",
-                    classes="approval-label"
-                )
+                yield Label(f"Tool: {self.tool_name}", classes="approval-label")
+                yield Static(f"Arguments:\n{formatted_input}", classes="approval-label")
 
             with Horizontal(id="approval-buttons"):
-                yield Button("Allow", variant="success", id="allow-button", classes="approval-button")
+                yield Button(
+                    "Allow", variant="success", id="allow-button", classes="approval-button"
+                )
                 yield Button("Deny", variant="error", id="deny-button", classes="approval-button")
-                yield Button("Always", variant="primary", id="always-allow-button", classes="approval-button")
+                yield Button(
+                    "Always", variant="primary", id="always-allow-button", classes="approval-button"
+                )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         button_id = event.button.id
