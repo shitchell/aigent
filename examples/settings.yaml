@@ -34,6 +34,15 @@ permission_schemas:
     default_policy: "allow"
 
 profiles:
+  # Dedicated test profile - used by pytest, avoids depending on "default"
+  test:
+    name: "test"
+    model_provider: "openai"
+    model_name: "gpt-4o-mini"  # Fast and cheap for tests
+    temperature: 0.0  # Deterministic for reproducible tests
+    allowed_tools: ["*"]
+    permission_schema: "yolo"  # No approval prompts during tests
+
   default:
     name: "default"
     model_provider: "openai"
