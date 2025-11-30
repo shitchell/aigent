@@ -210,7 +210,29 @@ async def websocket_endpoint(
         
     user = User(id=user_id, name=user_id, client_type=client_type)
     
+    # Notify System (Connect)
     await bus.dispatch(CoreSignal.CLIENT_CONNECT, session=session, user=user, websocket=websocket)
+
+    # Replay History
+    for msg in session.history:
+        if msg.role == RoleType.USER:
+            await manager.broadcast(
+                session_id,
+                {"type": "user_input", "content": msg.content, "metadata": msg.metadata},
+            )
+        elif msg.role == RoleType.ASSISTANT:
+            await manager.broadcast(
+                session_id,
+                {"type": "history_content", "content": msg.content, "metadata": msg.metadata},
+            )
+        elif msg.role == RoleType.TOOL:
+            await manager.broadcast(
+                session_id,
+                {"type": "tool_end", "content": msg.content, "metadata": msg.metadata},
+            )
+    
+    # Send finish to ensure UI state is clean
+    await manager.broadcast(session_id, {"type": "finish"})
 
     try:
         while True:
