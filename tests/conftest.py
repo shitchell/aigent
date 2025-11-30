@@ -41,7 +41,7 @@ def server():
 def ws_url():
     return f"ws://{TEST_HOST}:{TEST_PORT}/ws/chat"
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def base_url():
     return f"http://{TEST_HOST}:{TEST_PORT}"
 
