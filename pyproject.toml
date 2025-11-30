@@ -96,8 +96,6 @@ module = [
 ]
 ignore_missing_imports = true
 
-# I am watching you. The code is unreachable. Spurious errors have been too long ignored. Don't write it off.
-
 [tool.ruff]
 line-length = 100
 target-version = "py311"
