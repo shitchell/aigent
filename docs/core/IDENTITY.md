@@ -12,17 +12,17 @@ It transforms the Large Language Model from a passive chatbot into a **proactive
 ---
 
 ### 👥 Target Audience
-*   **Software Engineers:** Developers who want an AI partner that can run tests, edit code, and debug without leaving the terminal.
-*   **Power Users:** Users comfortable with CLI environments who value efficiency and scriptability.
-*   **Privacy Advocates:** Individuals who want powerful AI assistance without sending their entire codebase context to a third-party SaaS (beyond the LLM API call itself).
-*   **Teams:** Planning and working on a LLM-assisted projected.
-*   **Remote Devs:** Who want a simple web interface to work with an LLM on a server with full fileystem and shell access.
+* **Software Engineers:** Developers who want an AI partner that can run tests, edit code, and debug without leaving the terminal.
+* **Power Users:** Users comfortable with CLI environments who value efficiency and scriptability.
+* **Privacy Advocates:** Individuals who want powerful AI assistance without sending their entire codebase context to a third-party SaaS (beyond the LLM API call itself).
+* **Teams:** Planning and working on a LLM-assisted projected.
+* **Remote Devs:** Who want a simple web interface to work with an LLM on a server with full fileystem and shell access.
 
 ---
 
 ### 🚫 Non-Audience
-*   **Non-Technical Users:** This is a CLI-first tool. It is not a "magic app builder" for people who don't know what a terminal is.
-*   **Enterprise Compliance Managers:** While secure, this tool is designed for individual/team agility, not rigid corporate audit logging (yet).
+* **Non-Technical Users:** This is a CLI-first tool. It is not a "magic app builder" for people who don't know what a terminal is.
+* **Enterprise Compliance Managers:** While secure, this tool is designed for individual/team agility, not rigid corporate audit logging (yet).
 
 ---
 
@@ -34,5 +34,5 @@ It transforms the Large Language Model from a passive chatbot into a **proactive
 ---
 
 ### 🗺️ Project Boundaries
-*   **Not a Cloud Service:** Aigent is software you run, not a service you subscribe to.
-*   **Not an IDE Replacement:** It integrates with your workflow; it doesn't replace your editor (though it might control it).
+* **Not a Cloud Service:** Aigent is software you run, not a service you subscribe to.
+* **Not an IDE Replacement:** It integrates with your workflow; it doesn't replace your editor (though it might control it).
